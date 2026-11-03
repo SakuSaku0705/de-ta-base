@@ -5,7 +5,7 @@
 
 ## 実行方法
 ### ライブラリのインストール
-pip3 install streamlit pandas openpyxl pillow matplotlib pydantic google-genai
+pip3 install streamlit pandas openpyxl pillow matplotlib pydantic google-genai google-auth
 
 ### appの実行
 streamlit run app.py
