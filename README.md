@@ -3,6 +3,14 @@
 基本情報技術者試験（科目A）の初学者向け学習支援システム。
 専門用語を排除した日常の比喩、実社会での活用例、16:9の横長概念図、属性別二層解説（初学者向け・理系向け）を提供し、直感的な理解を促します。
 
+## 実行方法
+### ライブラリのインストール
+pip3 install streamlit pandas openpyxl pillow matplotlib pydantic google-genai
+
+### appの実行
+streamlit run app.py
+
+
 ## システムアーキテクチャ
 - **Frontend / UI**: Streamlit (`app.py`)
 - **Database**: SQLite (`fe_study.db`)
