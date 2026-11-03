@@ -1,9 +1,6 @@
 """
 【FE-AI Tutor】総合データベース同期スクリプト (sync_db.py)
-
-使い方:
-  python3 sync_db.py           # 差分同期（解答ログ等を保持したまま、最新のExcel/画像/解説を高速同期）
-  python3 sync_db.py --rebuild # 完全再構築（テーブルを一旦DROPしてマスターExcelから100%再生成）
+- official_def（用語概要・公式定義）の差分更新・完全再構築に完全対応
 """
 
 import os
@@ -159,12 +156,12 @@ def main():
     # モード2: 差分同期 (通常実行)
     # =========================================================
     else:
-        print("\n⚡ [差分同期モード] 既存の学習ログを壊さず、最新の比喩・実例・試験対策文・画像を同期します...")
+        print("\n⚡ [差分同期モード] 既存の学習ログを保持したまま、最新の公式定義・比喩・実例・試験対策文・画像を同期します...")
 
         # カラムの存在チェック（なければ自動新設）
         cur.execute("PRAGMA table_info(terms);")
         cols = [c[1] for c in cur.fetchall()]
-        for col_need in ["exam_point_text", "image_path", "metaphor_def", "practical_ex"]:
+        for col_need in ["official_def", "exam_point_text", "image_path", "metaphor_def", "practical_ex"]:
             if col_need not in cols:
                 cur.execute(f"ALTER TABLE terms ADD COLUMN {col_need} TEXT;")
                 print(f"✨ terms テーブルに '{col_need}' カラムを追加しました。")
@@ -188,20 +185,22 @@ def main():
                 t = gv(r, "term_name")
                 if not t: continue
 
+                off = gv(r, "kakomon_official_def") or gv(r, "official_def")
                 meta = gv(r, "intuitive_def_final") or gv(r, "intuitive_def")
                 prac = gv(r, "practical_example_final") or gv(r, "practical_example")
                 exam = gv(r, "exam_point_text")
                 img = image_map.get(t, gv(r, "image_path"))
 
-                # 空文字で上書きして消さないよう COALESCE / NULLIF で保護更新
+                # official_def も含めて差分同期
                 cur.execute("""
                     UPDATE terms 
-                    SET metaphor_def = COALESCE(NULLIF(?, ''), metaphor_def),
+                    SET official_def = COALESCE(NULLIF(?, ''), official_def),
+                        metaphor_def = COALESCE(NULLIF(?, ''), metaphor_def),
                         practical_ex = COALESCE(NULLIF(?, ''), practical_ex),
                         exam_point_text = COALESCE(NULLIF(?, ''), exam_point_text),
                         image_path = COALESCE(NULLIF(?, ''), image_path)
                     WHERE trim(term_name) = ?;
-                """, (meta, prac, exam, img, t))
+                """, (off, meta, prac, exam, img, t))
                 updated += cur.rowcount
 
         conn.commit()
