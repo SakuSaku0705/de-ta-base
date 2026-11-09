@@ -1,8 +1,9 @@
 """
 【FE-AI Tutor】基本情報技術者試験 初学者向け学習支援システム
-- 認証: 被験者ログイン・セッション管理
-- 検索機能: キーワード部分一致検索 ＆ 1〜23分野ドリルダウン（選定7分野強調）
-- 学習モード: 用語学習（概要常時表示 + タブ切替UI） / 問題演習（Q1/Q2・二層解説） / 学習履歴
+- UI設計: 視認性重視の縦フロー構造
+  1. 用語概要（基本定義）
+  2. 構造対比インフォグラフィック（常時・大画面表示）
+  3. 多面的深掘りタブ（試験対策 / 直感比喩 / 実社会例）
 """
 
 import os
@@ -21,7 +22,6 @@ st.set_page_config(
 
 DB_FILE = "fe_study.db"
 
-# 今回重点的に選定した7分野
 TARGET_7_CATEGORIES = [
     "3. コンピュータ構成要素",
     "5. ソフトウェア",
@@ -32,15 +32,15 @@ TARGET_7_CATEGORIES = [
     "22. 企業活動"
 ]
 
-# カスタムCSS
 st.markdown("""
 <style>
-    .main-title { font-size: 2.0rem; font-weight: 800; color: #1E3A8A; margin-bottom: 0.2rem; }
+    .main-title { font-size: 2.1rem; font-weight: 800; color: #1E3A8A; margin-bottom: 0.2rem; }
     .badge-cat { background-color: #EFF6FF; color: #1D4ED8; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; display: inline-block; margin-bottom: 0.6rem; }
     .badge-target { background-color: #FEF3C7; color: #92400E; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; margin-left: 0.5rem; }
-    .overview-box { background-color: #F8FAFC; border-left: 5px solid #2563EB; padding: 1.2rem; border-radius: 6px; margin-bottom: 1.2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .overview-box { background-color: #F8FAFC; border-left: 5px solid #2563EB; padding: 1.2rem; border-radius: 6px; margin-bottom: 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .overview-title { font-size: 1.05rem; font-weight: 700; color: #1E293B; margin-bottom: 0.4rem; }
     .overview-text { font-size: 0.98rem; line-height: 1.6; color: #334155; }
+    .diagram-container { margin-bottom: 1.5rem; background-color: #FFFFFF; padding: 0.8rem; border-radius: 8px; border: 1px solid #E2E8F0; }
     .content-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1.2rem; line-height: 1.8; }
 </style>
 """, unsafe_allow_html=True)
@@ -64,6 +64,11 @@ def init_log_tables():
         answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    cur.execute("PRAGMA table_info(quiz_logs);")
+    cols = [c[1] for c in cur.fetchall()]
+    if "question_type" not in cols:
+        cur.execute("ALTER TABLE quiz_logs ADD COLUMN question_type TEXT DEFAULT 'Q1';")
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS term_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,8 +94,8 @@ if not st.session_state["user_id"]:
     
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.markdown("### ログイン / 被験者認証")
-        user_input = st.text_input("被験者ID または ユーザー名を入力してください:", placeholder="例: user01, student_A")
+        st.markdown("### 被験者ログイン")
+        user_input = st.text_input("被験者IDを入力してください:", placeholder="例: student01, user_A")
         if st.button("学習を開始する", type="primary"):
             if user_input.strip():
                 st.session_state["user_id"] = user_input.strip()
@@ -99,11 +104,11 @@ if not st.session_state["user_id"]:
                 st.warning("IDを入力してください。")
     with col2:
         st.info("""
-        **【本システムの特徴】**
-        - **重点7分野の徹底攻略**: 頻出かつ初学者がつまずきやすい7分野（計算・ネットワーク・セキュリティ等）を厳選
-        - **フリーワード検索**: 気になる用語を直接キーワード検索
+        **【本システムの学習アプローチ（被験者ガイダンス）】**
         - **用語概要の把握**: シラバス公式定義に基づく基礎知識の定着
-        - **二層解説問題演習**: 初学者向け・理系詳細別の解説付き問題
+        - **視覚的構造理解**: 概念の動作や対比を大判インフォグラフィックで直感把握
+        - **多面的解釈の深掘り**: 試験着眼点・日常比喩・実用例による理解の多角化
+        - **二層解説問題演習**: 初学者向け直感解説と技術的詳細解説による理解度測定
         """)
     st.stop()
 
@@ -121,7 +126,6 @@ mode = st.sidebar.radio("📚 モードを選択", ["💡 用語学習", "📝 �
 conn = get_db()
 cur = conn.cursor()
 
-# 全23分野を番号順（1〜23）にソートする関数
 def sort_categories(cat_list):
     def get_num(cat_str):
         m = re.match(r"^(\d+)", cat_str)
@@ -133,7 +137,7 @@ def sort_categories(cat_list):
 # =========================================================
 
 # ---------------------------------------------------------
-# A. 用語学習モード（選定7分野強調 ＆ 1〜23順）
+# A. 用語学習モード（縦フロー構造）
 # ---------------------------------------------------------
 if mode == "💡 用語学習":
     st.sidebar.subheader("🔍 用語を探す")
@@ -158,12 +162,10 @@ if mode == "💡 用語学習":
         else:
             st.sidebar.warning(f"「{search_keyword}」に一致する用語は見つかりませんでした。")
     else:
-        # DBから全分野を取得して1〜23に正しく数値順ソート
         cur.execute("SELECT DISTINCT sub_category FROM terms WHERE sub_category IS NOT NULL;")
         raw_cats = [row["sub_category"] for row in cur.fetchall()]
         sorted_cats = sort_categories(raw_cats)
 
-        # 選定7分野を太字・アイコンで目立たせ、選定外は薄く目立たなくするラベル生成
         cat_display_map = {}
         for c in sorted_cats:
             if any(t_cat in c for t_cat in TARGET_7_CATEGORIES):
@@ -179,7 +181,6 @@ if mode == "💡 用語学習":
         terms = [row["term_name"] for row in cur.fetchall()]
         selected_term = st.sidebar.selectbox("🔍 用語を選択", terms)
 
-    # 用語詳細表示
     if selected_term:
         cur.execute("SELECT * FROM terms WHERE term_name = ?;", (selected_term,))
         tdata = cur.fetchone()
@@ -190,14 +191,12 @@ if mode == "💡 用語学習":
 
             is_target_7 = any(tc in str(tdata["sub_category"]) for tc in TARGET_7_CATEGORIES)
             
-            # 分野バッジと重点分野バッジ
             badge_html = f'<div class="badge-cat">分類: {tdata["sub_category"]}</div>'
             if is_target_7:
                 badge_html += '<span class="badge-target">★ 本研究 重点対象分野</span>'
             st.markdown(badge_html, unsafe_allow_html=True)
             st.markdown(f'<div class="main-title">{tdata["term_name"]}</div>', unsafe_allow_html=True)
 
-            # 選定外分野を選んだ場合の案内
             if not is_target_7:
                 st.caption("ℹ️ この用語は本研究の選定7分野以外の項目です。用語概要や基本演習のみご利用いただけます。")
 
@@ -213,12 +212,18 @@ if mode == "💡 用語学習":
             </div>
             """, unsafe_allow_html=True)
 
-            # ② 多面的アプローチ（タブUI）
-            t_exam, t_meta, t_prac, t_diag = st.tabs([
+            # ② 構造対比インフォグラフィック（概要の直下に大判・常時表示）
+            img_path = tdata["image_path"]
+            if img_path and os.path.exists(img_path):
+                st.markdown(f"##### 🖼️ 構造対比インフォグラフィック")
+                st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
+                st.write("") # スペース空け
+
+            # ③ 多面的アプローチ（3つの深掘りタブ）
+            t_exam, t_meta, t_prac = st.tabs([
                 "📖 試験対策（着眼点とキーワード）",
                 "💡 直感理解（日常の比喩）",
-                "🌍 実社会での活用例",
-                "🖼️ 概念図解（インフォグラフィック）"
+                "🌍 実社会での活用例"
             ])
 
             with t_exam:
@@ -227,7 +232,7 @@ if mode == "💡 用語学習":
                 if exam_text and str(exam_text).strip() not in ["", "None", "nan"]:
                     st.info(exam_text)
                 else:
-                    st.warning("試験直結解説テキストは準備中です（重点7分野を中心に順次生成中）。")
+                    st.warning("試験直結解説テキストは準備中です。")
 
             with t_meta:
                 st.subheader("💡 日常の生活シーンに例えると？")
@@ -245,14 +250,6 @@ if mode == "💡 用語学習":
                 else:
                     st.warning("実用例は準備中です。")
 
-            with t_diag:
-                st.subheader("🖼️ 概念構造インフォグラフィック")
-                img_path = tdata["image_path"]
-                if img_path and os.path.exists(img_path):
-                    st.image(img_path, use_container_width=True)
-                else:
-                    st.info("図解画像は現在生成準備中です。")
-
 # ---------------------------------------------------------
 # B. 問題演習モード
 # ---------------------------------------------------------
@@ -266,7 +263,6 @@ elif mode == "📝 問題演習":
 
     col_q1, col_q2 = st.columns([1, 2])
     with col_q1:
-        # 問題演習でも選定7分野がわかりやすいように表示
         q_options = ["全分野ランダム"]
         q_map = {"全分野ランダム": "全分野ランダム"}
         for qc in sorted_q_cats:
@@ -370,8 +366,16 @@ elif mode == "📊 学習履歴・分析":
         m2.metric("正解数", f"{correct_q} 問")
         m3.metric("正答率", f"{acc:.1f} %")
 
+        if "question_type" not in df_logs.columns:
+            df_logs["question_type"] = "Q1"
+        else:
+            df_logs["question_type"] = df_logs["question_type"].fillna("Q1")
+
+        show_cols = ["term_name", "question_type", "selected_choice", "is_correct", "answered_at"]
+        available_cols = [c for c in show_cols if c in df_logs.columns]
+
         st.subheader("直近の回答履歴")
-        st.dataframe(df_logs[["term_name", "question_type", "selected_choice", "is_correct", "answered_at"]], use_container_width=True)
+        st.dataframe(df_logs[available_cols], use_container_width=True)
     else:
         st.info("まだ演習履歴がありません。『📝 問題演習』から問題を解いてみましょう！")
 
