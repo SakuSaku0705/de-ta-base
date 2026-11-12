@@ -4,3 +4,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 15:56:46","test01","TERM_STUDY","3Dプリンター","view","-",10.6
 "2026-11-12 15:56:57","test01","TERM_STUDY","シリアルATA","view","-",9.0
 "2026-11-12 15:57:02","test01","TERM_STUDY","マイクロコンピュータ","view","-",3.9
+"2026-11-12 15:57:06","test01","TERM_STUDY","2相コミットメント","view","-",2.6
