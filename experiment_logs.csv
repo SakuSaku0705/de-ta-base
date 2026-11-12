@@ -7,3 +7,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 15:57:06","test01","TERM_STUDY","2相コミットメント","view","-",2.6
 "2026-11-12 15:57:21","test01","TERM_STUDY","SELECT文","view","-",13.5
 "2026-11-12 15:57:28","test01","TERM_STUDY","外部キー","view","-",5.7
+"2026-11-12 15:57:39","test01","QUIZ_Q1","ハードディスク","ウ","0",4.5
