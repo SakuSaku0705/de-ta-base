@@ -2,3 +2,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 15:55:57","test01","LOGIN","-","start","-",0
 "2026-11-12 15:56:34","test01","TERM_STUDY","2の補数","view","-",33.0
 "2026-11-12 15:56:46","test01","TERM_STUDY","3Dプリンター","view","-",10.6
+"2026-11-12 15:56:57","test01","TERM_STUDY","シリアルATA","view","-",9.0
