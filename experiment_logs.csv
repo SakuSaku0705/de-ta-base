@@ -17,3 +17,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 16:26:34","test03","TERM_STUDY","API","view","-",7.2
 "2026-11-12 16:26:41","test02","TERM_STUDY","2の補数","view","-",75.5
 "2026-11-12 16:26:44","test02","TERM_STUDY","CD","view","-",1.3
+"2026-11-12 16:26:48","test03","TERM_STUDY","コンポーネント","view","-",13.1
