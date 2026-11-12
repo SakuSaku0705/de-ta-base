@@ -1,0 +1,2 @@
+timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
+"2026-11-12 15:55:57","test01","LOGIN","-","start","-",0
