@@ -11,3 +11,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 15:58:13","test01","QUIZ_Q1","分散データベース","イ","0",11.7
 "2026-11-12 15:58:30","test01","LOGOUT","-","end","-",0
 "2026-11-12 16:25:24","test02","LOGIN","-","start","-",0
+"2026-11-12 16:26:06","test03","LOGIN","-","start","-",0
