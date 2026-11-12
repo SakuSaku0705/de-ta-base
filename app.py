@@ -1,13 +1,15 @@
 """
 【FE-AI Tutor】基本情報技術者試験 初学者向け学習支援システム
-- UI設計: 視認性重視の縦フロー構造
-  1. 用語概要（基本定義）
-  2. 構造対比インフォグラフィック（常時・大画面表示）
-  3. 多面的深掘りタブ（試験対策 / 直感比喩 / 実社会例）
+- 滞在時間・解答時間ログ計測 ＋ GitHub自動バックアップ対応版
 """
 
 import os
 import re
+import json
+import time
+import base64
+import urllib.request
+import urllib.error
 import sqlite3
 import datetime
 import pandas as pd
@@ -40,19 +42,89 @@ st.markdown("""
     .overview-box { background-color: #F8FAFC; border-left: 5px solid #2563EB; padding: 1.2rem; border-radius: 6px; margin-bottom: 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .overview-title { font-size: 1.05rem; font-weight: 700; color: #1E293B; margin-bottom: 0.4rem; }
     .overview-text { font-size: 0.98rem; line-height: 1.6; color: #334155; }
-    .diagram-container { margin-bottom: 1.5rem; background-color: #FFFFFF; padding: 0.8rem; border-radius: 8px; border: 1px solid #E2E8F0; }
     .content-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1.2rem; line-height: 1.8; }
 </style>
 """, unsafe_allow_html=True)
+
+# =========================================================
+# GitHub 自動ログ追記関数
+# =========================================================
+def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail, is_correct, duration_sec):
+    """Streamlit Secretsに設定されたGitHubリポジトリのCSVファイルに1行追記する"""
+    try:
+        token = st.secrets.get("GITHUB_TOKEN")
+        repo = st.secrets.get("GITHUB_REPO")
+        file_path = st.secrets.get("LOG_FILE_PATH", "experiment_logs.csv")
+    except Exception:
+        return  # ローカル実行時などSecrets未設定時はスキップ
+
+    if not token or not repo:
+        return
+
+    api_url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "FE-AI-Tutor-Logger"
+    }
+
+    # CSV1行分のデータ整形（カンマ対策でダブルクォート囲み）
+    safe_term = str(term_name).replace('"', '""')
+    safe_detail = str(detail).replace('"', '""')
+    new_row = f'"{timestamp_str}","{user_id}","{action_type}","{safe_term}","{safe_detail}","{is_correct}",{duration_sec}\n'
+    header_row = "timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds\n"
+
+    sha = None
+    current_content = header_row
+
+    # 1. 既存ファイルの取得（あれば追記、なければ新規作成）
+    try:
+        req = urllib.request.Request(api_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            sha = data.get("sha")
+            decoded = base64.b64decode(data.get("content", "")).decode("utf-8")
+            current_content = decoded if decoded.endswith("\n") else decoded + "\n"
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            return
+    except Exception:
+        return
+
+    updated_content = current_content + new_row
+    encoded_content = base64.b64encode(updated_content.encode("utf-8")).decode("utf-8")
+
+    payload = {
+        "message": f"log: {user_id} - {action_type} ({term_name})",
+        "content": encoded_content
+    }
+    if sha:
+        payload["sha"] = sha
+
+    # 2. GitHubへ書き込み（PUT）
+    try:
+        put_req = urllib.request.Request(
+            api_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={**headers, "Content-Type": "application/json"},
+            method="PUT"
+        )
+        urllib.request.urlopen(put_req, timeout=5)
+    except Exception:
+        pass
+
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_log_tables():
     conn = get_db()
     cur = conn.cursor()
+    
     cur.execute("""
     CREATE TABLE IF NOT EXISTS quiz_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,32 +133,72 @@ def init_log_tables():
         question_type TEXT,
         selected_choice TEXT,
         is_correct INTEGER,
+        response_time_seconds REAL DEFAULT 0,
         answered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
     cur.execute("PRAGMA table_info(quiz_logs);")
-    cols = [c[1] for c in cur.fetchall()]
-    if "question_type" not in cols:
+    q_cols = [c[1] for c in cur.fetchall()]
+    if "question_type" not in q_cols:
         cur.execute("ALTER TABLE quiz_logs ADD COLUMN question_type TEXT DEFAULT 'Q1';")
+    if "response_time_seconds" not in q_cols:
+        cur.execute("ALTER TABLE quiz_logs ADD COLUMN response_time_seconds REAL DEFAULT 0;")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS term_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT,
         term_name TEXT,
+        duration_seconds REAL DEFAULT 0,
         viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    cur.execute("PRAGMA table_info(term_logs);")
+    t_cols = [c[1] for c in cur.fetchall()]
+    if "duration_seconds" not in t_cols:
+        cur.execute("ALTER TABLE term_logs ADD COLUMN duration_seconds REAL DEFAULT 0;")
+
     conn.commit()
     conn.close()
 
 init_log_tables()
+
+
+def now_jst_str():
+    jst = datetime.timezone(datetime.timedelta(hours=9))
+    return datetime.datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def flush_term_duration(conn):
+    """直前に閲覧していた用語の滞在時間を確定してDBとGitHubに保存する"""
+    if "active_term" in st.session_state and st.session_state["active_term"]:
+        elapsed = round(time.time() - st.session_state["term_start_time"], 1)
+        if 1.0 <= elapsed <= 600.0:
+            ts = now_jst_str()
+            uid = st.session_state["user_id"]
+            tname = st.session_state["active_term"]
+
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO term_logs (user_id, term_name, duration_seconds, viewed_at)
+                VALUES (?, ?, ?, ?);
+            """, (uid, tname, elapsed, ts))
+            conn.commit()
+
+            # GitHubにも自動保存
+            append_log_to_github(ts, uid, "TERM_STUDY", tname, "view", "-", elapsed)
+
+        st.session_state["active_term"] = None
 
 # =========================================================
 # 1. ログイン画面
 # =========================================================
 if "user_id" not in st.session_state:
     st.session_state["user_id"] = None
+if "active_term" not in st.session_state:
+    st.session_state["active_term"] = None
+if "term_start_time" not in st.session_state:
+    st.session_state["term_start_time"] = time.time()
 
 if not st.session_state["user_id"]:
     st.title("🎓 FE-AI Tutor ログイン")
@@ -95,10 +207,12 @@ if not st.session_state["user_id"]:
     col1, col2 = st.columns([1, 1])
     with col1:
         st.markdown("### 被験者ログイン")
-        user_input = st.text_input("被験者IDを入力してください:", placeholder="例: student01, user_A")
+        user_input = st.text_input("被験者IDを入力してください:", placeholder="例: user01, student01")
         if st.button("学習を開始する", type="primary"):
             if user_input.strip():
-                st.session_state["user_id"] = user_input.strip()
+                uid = user_input.strip()
+                st.session_state["user_id"] = uid
+                append_log_to_github(now_jst_str(), uid, "LOGIN", "-", "start", "-", 0)
                 st.rerun()
             else:
                 st.warning("IDを入力してください。")
@@ -112,19 +226,24 @@ if not st.session_state["user_id"]:
         """)
     st.stop()
 
+conn = get_db()
+cur = conn.cursor()
+
 # =========================================================
 # 2. サイドバー
 # =========================================================
 st.sidebar.markdown(f"👤 **ログイン中:** `{st.session_state['user_id']}`")
 if st.sidebar.button("ログアウト"):
+    flush_term_duration(conn)
+    append_log_to_github(now_jst_str(), st.session_state["user_id"], "LOGOUT", "-", "end", "-", 0)
     st.session_state["user_id"] = None
     st.rerun()
 
 st.sidebar.divider()
 mode = st.sidebar.radio("📚 モードを選択", ["💡 用語学習", "📝 問題演習", "📊 学習履歴・分析"])
 
-conn = get_db()
-cur = conn.cursor()
+if mode != "💡 用語学習":
+    flush_term_duration(conn)
 
 def sort_categories(cat_list):
     def get_num(cat_str):
@@ -137,7 +256,7 @@ def sort_categories(cat_list):
 # =========================================================
 
 # ---------------------------------------------------------
-# A. 用語学習モード（縦フロー構造）
+# A. 用語学習モード
 # ---------------------------------------------------------
 if mode == "💡 用語学習":
     st.sidebar.subheader("🔍 用語を探す")
@@ -182,13 +301,15 @@ if mode == "💡 用語学習":
         selected_term = st.sidebar.selectbox("🔍 用語を選択", terms)
 
     if selected_term:
+        if st.session_state["active_term"] != selected_term:
+            flush_term_duration(conn)
+            st.session_state["active_term"] = selected_term
+            st.session_state["term_start_time"] = time.time()
+
         cur.execute("SELECT * FROM terms WHERE term_name = ?;", (selected_term,))
         tdata = cur.fetchone()
 
         if tdata:
-            cur.execute("INSERT INTO term_logs (user_id, term_name) VALUES (?, ?);", (st.session_state["user_id"], selected_term))
-            conn.commit()
-
             is_target_7 = any(tc in str(tdata["sub_category"]) for tc in TARGET_7_CATEGORIES)
             
             badge_html = f'<div class="badge-cat">分類: {tdata["sub_category"]}</div>'
@@ -200,7 +321,6 @@ if mode == "💡 用語学習":
             if not is_target_7:
                 st.caption("ℹ️ この用語は本研究の選定7分野以外の項目です。用語概要や基本演習のみご利用いただけます。")
 
-            # ① 用語概要（最上部に常時固定表示）
             off_def = tdata["official_def"]
             if not off_def or str(off_def).strip() in ["", "None", "nan"]:
                 off_def = "※ 公式定義データを読み込み中（シラバス標準定義に準拠）。"
@@ -212,14 +332,14 @@ if mode == "💡 用語学習":
             </div>
             """, unsafe_allow_html=True)
 
-            # ② 構造対比インフォグラフィック（概要の直下に大判・常時表示）
             img_path = tdata["image_path"]
-            if img_path and os.path.exists(img_path):
-                st.markdown(f"##### 🖼️ 構造対比インフォグラフィック")
-                st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
-                st.write("") # スペース空け
+            if img_path:
+                safe_img = img_path.replace("/", "_") if not os.path.exists(img_path) else img_path
+                if os.path.exists(img_path):
+                    st.markdown("##### 🖼️ 構造対比インフォグラフィック")
+                    st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
+                    st.write("")
 
-            # ③ 多面的アプローチ（3つの深掘りタブ）
             t_exam, t_meta, t_prac = st.tabs([
                 "📖 試験対策（着眼点とキーワード）",
                 "💡 直感理解（日常の比喩）",
@@ -274,12 +394,25 @@ elif mode == "📝 問題演習":
         sel_q_cat = q_map[sel_q_label]
         q_type = st.radio("問題タイプ", ["【基本】正解を見抜く問題 (Q1)", "【応用】誤りを見抜く問題 (Q2)"])
 
-    if sel_q_cat == "全分野ランダム":
-        cur.execute("SELECT * FROM terms_master WHERE question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;")
-    else:
-        cur.execute("SELECT * FROM terms_master WHERE sub_category = ? AND question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;", (sel_q_cat,))
+        if st.button("🔄 次の問題を出題"):
+            st.session_state.pop("current_q_term", None)
+            st.rerun()
 
-    q_data = cur.fetchone()
+    q_state_key = f"{sel_q_cat}_{q_type}"
+    if st.session_state.get("q_state_key") != q_state_key or "current_q_term" not in st.session_state:
+        if sel_q_cat == "全分野ランダム":
+            cur.execute("SELECT term_name FROM terms_master WHERE question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;")
+        else:
+            cur.execute("SELECT term_name FROM terms_master WHERE sub_category = ? AND question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;", (sel_q_cat,))
+        row = cur.fetchone()
+        st.session_state["current_q_term"] = row["term_name"] if row else None
+        st.session_state["q_state_key"] = q_state_key
+        st.session_state["q_start_time"] = time.time()
+
+    q_data = None
+    if st.session_state.get("current_q_term"):
+        cur.execute("SELECT * FROM terms_master WHERE term_name = ?;", (st.session_state["current_q_term"],))
+        q_data = cur.fetchone()
 
     with col_q2:
         if q_data:
@@ -296,19 +429,25 @@ elif mode == "📝 問題演習":
                 ans = st.radio("あなたの回答:", choices, key=f"q1_{q_data['term_name']}")
 
                 if st.button("解答を送信", type="primary", key="btn_submit_q1"):
+                    resp_sec = round(time.time() - st.session_state.get("q_start_time", time.time()), 1)
                     correct = q_data["correct_ans"]
                     is_corr = 1 if ans.startswith(correct) else 0
+                    ts = now_jst_str()
+                    uid = st.session_state["user_id"]
 
                     cur.execute("""
-                        INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct)
-                        VALUES (?, ?, 'Q1', ?, ?);
-                    """, (st.session_state["user_id"], q_data["term_name"], ans[:1], is_corr))
+                        INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
+                        VALUES (?, ?, 'Q1', ?, ?, ?, ?);
+                    """, (uid, q_data["term_name"], ans[:1], is_corr, resp_sec, ts))
                     conn.commit()
 
+                    # GitHubにも自動保存
+                    append_log_to_github(ts, uid, "QUIZ_Q1", q_data["term_name"], ans[:1], is_corr, resp_sec)
+
                     if is_corr:
-                        st.success(f"🎉 正解です！（正解: {correct}）")
+                        st.success(f"🎉 正解です！（正解: {correct} / 解答時間: {resp_sec}秒）")
                     else:
-                        st.error(f"不正解です。（正解: {correct}）")
+                        st.error(f"不正解です。（正解: {correct} / 解答時間: {resp_sec}秒）")
 
                     with st.expander("💡 初学者向け分かりやすい解説", expanded=True):
                         st.write(q_data["explanation_beginner"])
@@ -327,19 +466,25 @@ elif mode == "📝 問題演習":
                     ans2 = st.radio("あなたの回答:", choices2, key=f"q2_{q_data['term_name']}")
 
                     if st.button("解答を送信", type="primary", key="btn_submit_q2"):
+                        resp_sec2 = round(time.time() - st.session_state.get("q_start_time", time.time()), 1)
                         correct2 = q_data["q2_correct_ans"]
                         is_corr2 = 1 if ans2.startswith(correct2) else 0
+                        ts2 = now_jst_str()
+                        uid = st.session_state["user_id"]
 
                         cur.execute("""
-                            INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct)
-                            VALUES (?, ?, 'Q2', ?, ?);
-                        """, (st.session_state["user_id"], q_data["term_name"], ans2[:1], is_corr2))
+                            INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
+                            VALUES (?, ?, 'Q2', ?, ?, ?, ?);
+                        """, (uid, q_data["term_name"], ans2[:1], is_corr2, resp_sec2, ts2))
                         conn.commit()
 
+                        # GitHubにも自動保存
+                        append_log_to_github(ts2, uid, "QUIZ_Q2", q_data["term_name"], ans2[:1], is_corr2, resp_sec2)
+
                         if is_corr2:
-                            st.success(f"🎉 正解です！（不適切な選択肢: {correct2}）")
+                            st.success(f"🎉 正解です！（不適切な選択肢: {correct2} / 解答時間: {resp_sec2}秒）")
                         else:
-                            st.error(f"不正解です。（正解: {correct2}）")
+                            st.error(f"不正解です。（正解: {correct2} / 解答時間: {resp_sec2}秒）")
 
                         with st.expander("解説を確認する", expanded=True):
                             st.write(q_data["q2_exp_beginner_final"])
@@ -366,12 +511,7 @@ elif mode == "📊 学習履歴・分析":
         m2.metric("正解数", f"{correct_q} 問")
         m3.metric("正答率", f"{acc:.1f} %")
 
-        if "question_type" not in df_logs.columns:
-            df_logs["question_type"] = "Q1"
-        else:
-            df_logs["question_type"] = df_logs["question_type"].fillna("Q1")
-
-        show_cols = ["term_name", "question_type", "selected_choice", "is_correct", "answered_at"]
+        show_cols = ["term_name", "question_type", "selected_choice", "is_correct", "response_time_seconds", "answered_at"]
         available_cols = [c for c in show_cols if c in df_logs.columns]
 
         st.subheader("直近の回答履歴")
