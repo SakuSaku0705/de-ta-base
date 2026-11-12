@@ -21,3 +21,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 16:26:52","test03","TERM_STUDY","3-2-1ルール","view","-",2.8
 "2026-11-12 16:26:59","test03","TERM_STUDY","JVN","view","-",5.4
 "2026-11-12 16:27:16","test03","QUIZ_Q1","障害原因の特定","ウ","0",15.5
+"2026-11-12 16:27:27","test03","QUIZ_Q1","相対パス","エ","0",4.6
