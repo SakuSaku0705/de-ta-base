@@ -1,12 +1,15 @@
 """
 【FE-AI Tutor】基本情報技術者試験 初学者向け学習支援システム
-- 滞在時間・解答時間ログ計測 ＋ GitHub自動バックアップ対応版
+- 本番頻度重み付けサンプリング ＋ 出題数選択（10〜100問）対応版
+- 滞在時間・解答時間ログ計測 ＋ GitHub自動バックアップ対応
 """
 
 import os
 import re
 import json
 import time
+import math
+import random
 import base64
 import urllib.request
 import urllib.error
@@ -34,6 +37,17 @@ TARGET_7_CATEGORIES = [
     "22. 企業活動"
 ]
 
+# 本番試験（科目A）の出題比率に基づく重点7分野の重み係数（合計1.0）
+CATEGORY_WEIGHTS = {
+    "3. コンピュータ構成要素": 0.14,
+    "5. ソフトウェア": 0.12,
+    "9. データベース": 0.14,
+    "10. ネットワーク": 0.16,
+    "11. セキュリティ": 0.20,
+    "12. システム開発技術": 0.12,
+    "22. 企業活動": 0.12
+}
+
 st.markdown("""
 <style>
     .main-title { font-size: 2.1rem; font-weight: 800; color: #1E3A8A; margin-bottom: 0.2rem; }
@@ -56,7 +70,7 @@ def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail,
         repo = st.secrets.get("GITHUB_REPO")
         file_path = st.secrets.get("LOG_FILE_PATH", "experiment_logs.csv")
     except Exception:
-        return  # ローカル実行時などSecrets未設定時はスキップ
+        return
 
     if not token or not repo:
         return
@@ -69,7 +83,6 @@ def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail,
         "User-Agent": "FE-AI-Tutor-Logger"
     }
 
-    # CSV1行分のデータ整形（カンマ対策でダブルクォート囲み）
     safe_term = str(term_name).replace('"', '""')
     safe_detail = str(detail).replace('"', '""')
     new_row = f'"{timestamp_str}","{user_id}","{action_type}","{safe_term}","{safe_detail}","{is_correct}",{duration_sec}\n'
@@ -78,7 +91,6 @@ def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail,
     sha = None
     current_content = header_row
 
-    # 1. 既存ファイルの取得（あれば追記、なければ新規作成）
     try:
         req = urllib.request.Request(api_url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=5) as res:
@@ -102,7 +114,6 @@ def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail,
     if sha:
         payload["sha"] = sha
 
-    # 2. GitHubへ書き込み（PUT）
     try:
         put_req = urllib.request.Request(
             api_url,
@@ -185,10 +196,66 @@ def flush_term_duration(conn):
             """, (uid, tname, elapsed, ts))
             conn.commit()
 
-            # GitHubにも自動保存
             append_log_to_github(ts, uid, "TERM_STUDY", tname, "view", "-", elapsed)
 
         st.session_state["active_term"] = None
+
+
+def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
+    """
+    本番出題比率（CATEGORY_WEIGHTS）に基づく重み付けサンプリング、
+    または指定分野からのランダム抽出によって出題リスト（term_nameの配列）を生成する
+    """
+    cond_col = "question_text" if q_type_code == "Q1" else "q2_question_text"
+    sampled_terms = []
+
+    if sel_cat == "本番頻度重み付け（重点7分野ミックス）":
+        # 各重点分野の重みに応じて出題数を比例配分
+        allocations = {}
+        allocated_sum = 0
+        for cat, weight in CATEGORY_WEIGHTS.items():
+            cnt = int(math.floor(num_questions * weight))
+            allocations[cat] = cnt
+            allocated_sum += cnt
+
+        # 端数を重みの大きい分野から1問ずつ配分
+        remainder = num_questions - allocated_sum
+        sorted_cats_by_weight = sorted(CATEGORY_WEIGHTS.keys(), key=lambda c: CATEGORY_WEIGHTS[c], reverse=True)
+        for i in range(remainder):
+            target_c = sorted_cats_by_weight[i % len(sorted_cats_by_weight)]
+            allocations[target_c] += 1
+
+        # 分野ごとにDBからランダム抽出
+        for cat, target_cnt in allocations.items():
+            if target_cnt <= 0:
+                continue
+            cur.execute(
+                f"SELECT term_name FROM terms_master WHERE sub_category LIKE ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' ORDER BY RANDOM() LIMIT ?;",
+                (f"%{cat}%", target_cnt)
+            )
+            rows = [r["term_name"] for r in cur.fetchall()]
+            sampled_terms.extend(rows)
+
+        # 不足分があれば重点7分野全体から重複なしで補充
+        if len(sampled_terms) < num_questions:
+            shortage = num_questions - len(sampled_terms)
+            placeholders = ",".join(["?"] * len(sampled_terms)) if sampled_terms else "''"
+            query = f"SELECT term_name FROM terms_master WHERE {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' AND term_name NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT ?;"
+            params = list(sampled_terms) + [shortage]
+            cur.execute(query, params)
+            sampled_terms.extend([r["term_name"] for r in cur.fetchall()])
+
+        random.shuffle(sampled_terms)
+    else:
+        # 特定分野指定時の抽出
+        cur.execute(
+            f"SELECT term_name FROM terms_master WHERE sub_category = ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' ORDER BY RANDOM() LIMIT ?;",
+            (sel_cat, num_questions)
+        )
+        sampled_terms = [r["term_name"] for r in cur.fetchall()]
+
+    return sampled_terms[:num_questions]
+
 
 # =========================================================
 # 1. ログイン画面
@@ -222,7 +289,7 @@ if not st.session_state["user_id"]:
         - **用語概要の把握**: シラバス公式定義に基づく基礎知識の定着
         - **視覚的構造理解**: 概念の動作や対比を大判インフォグラフィックで直感把握
         - **多面的解釈の深掘り**: 試験着眼点・日常比喩・実用例による理解の多角化
-        - **二層解説問題演習**: 初学者向け直感解説と技術的詳細解説による理解度測定
+        - **本番頻度再現演習**: 出題比率重み付けサンプリングによる実践的な4択演習
         """)
     st.stop()
 
@@ -333,12 +400,10 @@ if mode == "💡 用語学習":
             """, unsafe_allow_html=True)
 
             img_path = tdata["image_path"]
-            if img_path:
-                safe_img = img_path.replace("/", "_") if not os.path.exists(img_path) else img_path
-                if os.path.exists(img_path):
-                    st.markdown("##### 🖼️ 構造対比インフォグラフィック")
-                    st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
-                    st.write("")
+            if img_path and os.path.exists(img_path):
+                st.markdown("##### 🖼️ 構造対比インフォグラフィック")
+                st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
+                st.write("")
 
             t_exam, t_meta, t_prac = st.tabs([
                 "📖 試験対策（着眼点とキーワード）",
@@ -371,11 +436,11 @@ if mode == "💡 用語学習":
                     st.warning("実用例は準備中です。")
 
 # ---------------------------------------------------------
-# B. 問題演習モード
+# B. 問題演習モード（重み付け抽出 ＋ 出題数10〜100問選択対応）
 # ---------------------------------------------------------
 elif mode == "📝 問題演習":
     st.title("📝 基本情報技術者（科目A）問題演習")
-    st.caption("用語学習で身につけた知識を、実践的な4択問題でテストします。")
+    st.caption("本番の出題傾向を再現した重み付けサンプリング、または分野指定で実践演習を行います。")
 
     cur.execute("SELECT DISTINCT sub_category FROM terms_master WHERE question_text IS NOT NULL;")
     raw_q_cats = [r["sub_category"] for r in cur.fetchall()]
@@ -383,89 +448,131 @@ elif mode == "📝 問題演習":
 
     col_q1, col_q2 = st.columns([1, 2])
     with col_q1:
-        q_options = ["全分野ランダム"]
-        q_map = {"全分野ランダム": "全分野ランダム"}
+        st.markdown("#### ⚙️ 演習セット設定")
+        q_options = ["🎯 本番頻度重み付け（重点7分野ミックス）"]
+        q_map = {"🎯 本番頻度重み付け（重点7分野ミックス）": "本番頻度重み付け（重点7分野ミックス）"}
         for qc in sorted_q_cats:
             label = f"✨ {qc}" if any(tc in qc for tc in TARGET_7_CATEGORIES) else f"   {qc}"
             q_options.append(label)
             q_map[label] = qc
 
-        sel_q_label = st.selectbox("分野を選択", q_options)
+        sel_q_label = st.selectbox("出題モード・分野を選択", q_options)
         sel_q_cat = q_map[sel_q_label]
-        q_type = st.radio("問題タイプ", ["【基本】正解を見抜く問題 (Q1)", "【応用】誤りを見抜く問題 (Q2)"])
 
-        if st.button("🔄 次の問題を出題"):
-            st.session_state.pop("current_q_term", None)
+        q_type = st.radio("問題タイプ", ["【基本】正解を見抜く問題 (Q1)", "【応用】誤りを見抜く問題 (Q2)"])
+        q_type_code = "Q1" if "Q1" in q_type else "Q2"
+
+        num_questions = st.selectbox("出題問題数を選択", [10, 20, 30, 60, 100], index=0, format_func=lambda x: f"{x} 問セット")
+
+        if st.button("🚀 新しい演習セットを開始（リセット）", type="secondary", use_container_width=True):
+            st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+            st.session_state["quiz_index"] = 0
+            st.session_state["quiz_score"] = 0
+            st.session_state["quiz_answered"] = False
+            st.session_state["quiz_config_sig"] = f"{sel_q_cat}_{q_type_code}_{num_questions}"
+            st.session_state["q_start_time"] = time.time()
             st.rerun()
 
-    q_state_key = f"{sel_q_cat}_{q_type}"
-    if st.session_state.get("q_state_key") != q_state_key or "current_q_term" not in st.session_state:
-        if sel_q_cat == "全分野ランダム":
-            cur.execute("SELECT term_name FROM terms_master WHERE question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;")
-        else:
-            cur.execute("SELECT term_name FROM terms_master WHERE sub_category = ? AND question_text IS NOT NULL ORDER BY RANDOM() LIMIT 1;", (sel_q_cat,))
-        row = cur.fetchone()
-        st.session_state["current_q_term"] = row["term_name"] if row else None
-        st.session_state["q_state_key"] = q_state_key
+    # 初回または設定変更時に自動で出題セットを生成
+    current_sig = f"{sel_q_cat}_{q_type_code}_{num_questions}"
+    if st.session_state.get("quiz_config_sig") != current_sig or "quiz_queue" not in st.session_state:
+        st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+        st.session_state["quiz_index"] = 0
+        st.session_state["quiz_score"] = 0
+        st.session_state["quiz_answered"] = False
+        st.session_state["quiz_config_sig"] = current_sig
         st.session_state["q_start_time"] = time.time()
 
-    q_data = None
-    if st.session_state.get("current_q_term"):
-        cur.execute("SELECT * FROM terms_master WHERE term_name = ?;", (st.session_state["current_q_term"],))
-        q_data = cur.fetchone()
+    queue = st.session_state.get("quiz_queue", [])
+    idx = st.session_state.get("quiz_index", 0)
+    total_in_set = len(queue)
 
     with col_q2:
-        if q_data:
-            st.markdown(f"**対象用語**: `{q_data['term_name']}` （分野: {q_data['sub_category']}）")
+        if total_in_set == 0:
+            st.warning("選択された条件に該当する問題が見つかりませんでした。別の分野や問題タイプをお試しください。")
+        elif idx >= total_in_set:
+            # セット完了画面
+            score = st.session_state.get("quiz_score", 0)
+            rate = (score / total_in_set) * 100
+            st.success(f"🎊 演習セット完了！ 成績: **{score} / {total_in_set} 問正解（正答率 {rate:.1f}%）**")
+            if st.button("🔄 同じ設定でもう1セット解く", type="primary"):
+                st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+                st.session_state["quiz_index"] = 0
+                st.session_state["quiz_score"] = 0
+                st.session_state["quiz_answered"] = False
+                st.session_state["q_start_time"] = time.time()
+                st.rerun()
+        else:
+            # 進捗バーと現在の問題表示
+            st.progress((idx + 1) / total_in_set, text=f"進捗: 第 {idx + 1} 問 / 全 {total_in_set} 問 （現在の正解数: {st.session_state.get('quiz_score', 0)}問）")
+            current_term = queue[idx]
+            cur.execute("SELECT * FROM terms_master WHERE term_name = ?;", (current_term,))
+            q_data = cur.fetchone()
 
-            if "Q1" in q_type:
-                st.markdown(f"#### 問題\n{q_data['question_text']}")
-                choices = [
-                    f"ア: {q_data['choice_a']}",
-                    f"イ: {q_data['choice_b']}",
-                    f"ウ: {q_data['choice_c']}",
-                    f"エ: {q_data['choice_d']}"
-                ]
-                ans = st.radio("あなたの回答:", choices, key=f"q1_{q_data['term_name']}")
+            if q_data:
+                st.markdown(f"**対象用語**: `{q_data['term_name']}` （分野: {q_data['sub_category']}）")
 
-                if st.button("解答を送信", type="primary", key="btn_submit_q1"):
-                    resp_sec = round(time.time() - st.session_state.get("q_start_time", time.time()), 1)
-                    correct = q_data["correct_ans"]
-                    is_corr = 1 if ans.startswith(correct) else 0
-                    ts = now_jst_str()
-                    uid = st.session_state["user_id"]
+                if q_type_code == "Q1":
+                    st.markdown(f"#### Q{idx + 1}. {q_data['question_text']}")
+                    choices = [
+                        f"ア: {q_data['choice_a']}",
+                        f"イ: {q_data['choice_b']}",
+                        f"ウ: {q_data['choice_c']}",
+                        f"エ: {q_data['choice_d']}"
+                    ]
+                    ans = st.radio("あなたの回答:", choices, key=f"q1_{idx}_{q_data['term_name']}")
 
-                    cur.execute("""
-                        INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
-                        VALUES (?, ?, 'Q1', ?, ?, ?, ?);
-                    """, (uid, q_data["term_name"], ans[:1], is_corr, resp_sec, ts))
-                    conn.commit()
+                    if st.button("解答を送信", type="primary", key=f"btn_submit_q1_{idx}", disabled=st.session_state.get("quiz_answered", False)):
+                        resp_sec = round(time.time() - st.session_state.get("q_start_time", time.time()), 1)
+                        correct = q_data["correct_ans"]
+                        is_corr = 1 if ans.startswith(correct) else 0
+                        ts = now_jst_str()
+                        uid = st.session_state["user_id"]
 
-                    # GitHubにも自動保存
-                    append_log_to_github(ts, uid, "QUIZ_Q1", q_data["term_name"], ans[:1], is_corr, resp_sec)
+                        cur.execute("""
+                            INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
+                            VALUES (?, ?, 'Q1', ?, ?, ?, ?);
+                        """, (uid, q_data["term_name"], ans[:1], is_corr, resp_sec, ts))
+                        conn.commit()
 
-                    if is_corr:
-                        st.success(f"🎉 正解です！（正解: {correct} / 解答時間: {resp_sec}秒）")
-                    else:
-                        st.error(f"不正解です。（正解: {correct} / 解答時間: {resp_sec}秒）")
+                        append_log_to_github(ts, uid, "QUIZ_Q1", q_data["term_name"], ans[:1], is_corr, resp_sec)
 
-                    with st.expander("💡 初学者向け分かりやすい解説", expanded=True):
-                        st.write(q_data["explanation_beginner"])
-                    with st.expander("🔬 理系・技術的詳細解説"):
-                        st.write(q_data["explanation_advanced"])
+                        st.session_state["quiz_answered"] = True
+                        st.session_state["last_is_corr"] = is_corr
+                        st.session_state["last_resp_sec"] = resp_sec
+                        if is_corr:
+                            st.session_state["quiz_score"] += 1
+                        st.rerun()
 
-            else:
-                if q_data["q2_question_text"]:
-                    st.markdown(f"#### 問題（不適切なものを選択）\n{q_data['q2_question_text']}")
+                    if st.session_state.get("quiz_answered", False):
+                        correct = q_data["correct_ans"]
+                        if st.session_state.get("last_is_corr"):
+                            st.success(f"🎉 正解です！（正解: {correct} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
+                        else:
+                            st.error(f"不正解です。（正解: {correct} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
+
+                        with st.expander("💡 初学者向け分かりやすい解説", expanded=True):
+                            st.write(q_data["explanation_beginner"])
+                        with st.expander("🔬 理系・技術的詳細解説", expanded=True):
+                            st.write(q_data["explanation_advanced"])
+
+                        if st.button("➡️ 次の問題へ進む", type="primary", key=f"next_q1_{idx}"):
+                            st.session_state["quiz_index"] += 1
+                            st.session_state["quiz_answered"] = False
+                            st.session_state["q_start_time"] = time.time()
+                            st.rerun()
+
+                else:
+                    st.markdown(f"#### Q{idx + 1}（不適切なものを選択）. {q_data['q2_question_text']}")
                     choices2 = [
                         f"ア: {q_data['q2_choice_a']}",
                         f"イ: {q_data['q2_choice_b']}",
                         f"ウ: {q_data['q2_choice_c']}",
                         f"エ: {q_data['q2_choice_d']}"
                     ]
-                    ans2 = st.radio("あなたの回答:", choices2, key=f"q2_{q_data['term_name']}")
+                    ans2 = st.radio("あなたの回答:", choices2, key=f"q2_{idx}_{q_data['term_name']}")
 
-                    if st.button("解答を送信", type="primary", key="btn_submit_q2"):
+                    if st.button("解答を送信", type="primary", key=f"btn_submit_q2_{idx}", disabled=st.session_state.get("quiz_answered", False)):
                         resp_sec2 = round(time.time() - st.session_state.get("q_start_time", time.time()), 1)
                         correct2 = q_data["q2_correct_ans"]
                         is_corr2 = 1 if ans2.startswith(correct2) else 0
@@ -478,18 +585,30 @@ elif mode == "📝 問題演習":
                         """, (uid, q_data["term_name"], ans2[:1], is_corr2, resp_sec2, ts2))
                         conn.commit()
 
-                        # GitHubにも自動保存
                         append_log_to_github(ts2, uid, "QUIZ_Q2", q_data["term_name"], ans2[:1], is_corr2, resp_sec2)
 
+                        st.session_state["quiz_answered"] = True
+                        st.session_state["last_is_corr"] = is_corr2
+                        st.session_state["last_resp_sec"] = resp_sec2
                         if is_corr2:
-                            st.success(f"🎉 正解です！（不適切な選択肢: {correct2} / 解答時間: {resp_sec2}秒）")
-                        else:
-                            st.error(f"不正解です。（正解: {correct2} / 解答時間: {resp_sec2}秒）")
+                            st.session_state["quiz_score"] += 1
+                        st.rerun()
 
-                        with st.expander("解説を確認する", expanded=True):
+                    if st.session_state.get("quiz_answered", False):
+                        correct2 = q_data["q2_correct_ans"]
+                        if st.session_state.get("last_is_corr"):
+                            st.success(f"🎉 正解です！（不適切な選択肢: {correct2} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
+                        else:
+                            st.error(f"不正解です。（正解: {correct2} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
+
+                        with st.expander("💡 解説を確認する", expanded=True):
                             st.write(q_data["q2_exp_beginner_final"])
-                else:
-                    st.info("この用語のQ2問題は準備中です。")
+
+                        if st.button("➡️ 次の問題へ進む", type="primary", key=f"next_q2_{idx}"):
+                            st.session_state["quiz_index"] += 1
+                            st.session_state["quiz_answered"] = False
+                            st.session_state["q_start_time"] = time.time()
+                            st.rerun()
 
 # ---------------------------------------------------------
 # C. 学習履歴・分析ダッシュボード
