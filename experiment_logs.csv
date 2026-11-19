@@ -27,3 +27,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-12 16:28:35","test03","TERM_STUDY","1000BASE-T","view","-",10.1
 "2026-11-19 15:27:47","G23937","LOGIN","-","start","-",0
 "2026-11-19 15:27:51","G23937","TERM_STUDY","2の補数","view","-",2.5
+"2026-11-19 15:27:53","G23937","LOGOUT","-","end","-",0
