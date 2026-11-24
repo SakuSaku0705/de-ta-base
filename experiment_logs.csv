@@ -64,3 +64,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:28:23","test03","TERM_STUDY","AES","view","-",26.0
 "2026-11-24 15:28:32","test01","TERM_STUDY","3Dプリンター","view","-",17.2
 "2026-11-24 15:28:42","test03","TERM_STUDY","APT","view","-",17.5
+"2026-11-24 15:29:04","test03","TERM_STUDY","BCA","view","-",21.0
