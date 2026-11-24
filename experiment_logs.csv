@@ -58,3 +58,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:27:25","test03","TERM_STUDY","ELT","view","-",5.4
 "2026-11-24 15:27:33","test03","TERM_STUDY","ETL","view","-",6.8
 "2026-11-24 15:27:47","test03","TERM_STUDY","HAVING","view","-",12.3
+"2026-11-24 15:27:55","test03","TERM_STUDY","3-2-1ルール","view","-",6.6
