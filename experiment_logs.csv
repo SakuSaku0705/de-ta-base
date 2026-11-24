@@ -49,3 +49,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:24:12","test03","TERM_STUDY","CPI","view","-",19.4
 "2026-11-24 15:24:23","test03","TERM_STUDY","DMA方式","view","-",9.8
 "2026-11-24 15:24:33","test03","TERM_STUDY","NAND回路","view","-",7.9
+"2026-11-24 15:24:42","test03","TERM_STUDY","2相コミットメント","view","-",8.4
