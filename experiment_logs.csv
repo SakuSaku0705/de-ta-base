@@ -47,3 +47,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:23:35","test03","TERM_STUDY","CISC","view","-",9.9
 "2026-11-24 15:23:51","test03","TERM_STUDY","BLE","view","-",14.6
 "2026-11-24 15:24:12","test03","TERM_STUDY","CPI","view","-",19.4
+"2026-11-24 15:24:23","test03","TERM_STUDY","DMA方式","view","-",9.8
