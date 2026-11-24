@@ -69,3 +69,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:29:36","test01","TERM_STUDY","スーパースカラ","view","-",62.6
 "2026-11-24 15:29:40","test01","TERM_STUDY","2相コミットメント","view","-",2.8
 "2026-11-24 15:29:48","test03","TERM_STUDY","CA","view","-",36.5
+"2026-11-24 15:30:13","test03","TERM_STUDY","CAPTCHA","view","-",23.9
