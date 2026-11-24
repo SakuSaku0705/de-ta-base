@@ -51,3 +51,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:24:33","test03","TERM_STUDY","NAND回路","view","-",7.9
 "2026-11-24 15:24:42","test03","TERM_STUDY","2相コミットメント","view","-",8.4
 "2026-11-24 15:25:22","test03","TERM_STUDY","ACID特性","view","-",38.1
+"2026-11-24 15:26:23","test03","TERM_STUDY","DDL","view","-",59.9
