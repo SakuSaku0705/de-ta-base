@@ -44,3 +44,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:21:57","test03","TERM_STUDY","CD-R/RWドライブ","view","-",26.1
 "2026-11-24 15:23:19","test03","TERM_STUDY","CISC","view","-",80.4
 "2026-11-24 15:23:23","test03","TERM_STUDY","CPI","view","-",3.6
+"2026-11-24 15:23:35","test03","TERM_STUDY","CISC","view","-",9.9
