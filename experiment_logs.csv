@@ -40,3 +40,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:19:16","test03","TERM_STUDY","CRC","view","-",10.4
 "2026-11-24 15:19:19","test03","TERM_STUDY","3Dプリンター","view","-",1.3
 "2026-11-24 15:19:37","test03","TERM_STUDY","Bluetooth","view","-",17.2
+"2026-11-24 15:21:29","test03","TERM_STUDY","NOT回路","view","-",110.0
