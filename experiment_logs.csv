@@ -35,3 +35,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-19 15:30:11","test01","TERM_STUDY","2の補数","view","-",4.6
 "2026-11-19 15:30:20","test01","TERM_STUDY","3Dプリンター","view","-",6.6
 "2026-11-24 15:18:17","test03","LOGIN","-","start","-",0
+"2026-11-24 15:18:29","test03","TERM_STUDY","2の補数","view","-",9.7
