@@ -62,3 +62,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:28:06","test01","LOGIN","-","start","-",0
 "2026-11-24 15:28:14","test01","TERM_STUDY","2の補数","view","-",5.6
 "2026-11-24 15:28:23","test03","TERM_STUDY","AES","view","-",26.0
+"2026-11-24 15:28:32","test01","TERM_STUDY","3Dプリンター","view","-",17.2
