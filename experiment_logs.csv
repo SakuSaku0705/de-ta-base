@@ -182,3 +182,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 14:21:42","test01","TERM_STUDY","DFD","view_proposed","-",54.6
 "2026-11-25 14:22:00","test01","TERM_STUDY","BLE","view_proposed","-",15.7
 "2026-11-25 14:22:04","test01","TERM_STUDY","API","view_proposed","-",2.4
+"2026-11-25 14:22:22","test01","TERM_STUDY","ACID特性","view_proposed","-",16.8
