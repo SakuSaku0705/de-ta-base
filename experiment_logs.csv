@@ -101,3 +101,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:15:52","test01","TERM_STUDY","CSR報告書","view_proposed","-",4.3
 "2026-11-25 12:16:00","test01","TERM_STUDY","DE&I","view_proposed","-",6.2
 "2026-11-25 12:16:08","test01","TERM_STUDY","EOQ","view_proposed","-",6.9
+"2026-11-25 12:16:13","test01","TERM_STUDY","JIS Q 22301","view_proposed","-",3.1
