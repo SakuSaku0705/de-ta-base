@@ -195,3 +195,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 17:08:27","test01","LOGIN","-","start_proposed","-",0
 "2026-11-25 17:08:36","test01","TERM_STUDY","BLE","view_proposed","-",6.7
 "2026-11-25 17:08:51","test01","TERM_STUDY","BLE","view_proposed","-",4.7
+"2026-11-25 17:09:03","test01","TERM_STUDY","CISC","view_proposed","-",10.6
