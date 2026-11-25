@@ -119,3 +119,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:19:49","test01","TERM_STUDY","MVCモデル","view_proposed","-",7.8
 "2026-11-25 12:19:57","test01","TERM_STUDY","NS図","view_proposed","-",6.7
 "2026-11-25 12:20:05","test01","TERM_STUDY","NoSQLデータベース","view_proposed","-",6.0
+"2026-11-25 12:20:11","test01","TERM_STUDY","STS分割","view_proposed","-",4.4
