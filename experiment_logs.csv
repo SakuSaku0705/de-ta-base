@@ -80,3 +80,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:12:12","test01","LOGIN","-","start_proposed","-",0
 "2026-11-25 12:13:39","test01","LOGIN","-","start_proposed","-",0
 "2026-11-25 12:14:04","test01","TERM_STUDY","3Dプリンター","view_proposed","-",23.9
+"2026-11-25 12:14:09","test01","TERM_STUDY","CBC","view_proposed","-",3.5
