@@ -98,3 +98,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:15:35","test01","TERM_STUDY","CFO","view_proposed","-",3.6
 "2026-11-25 12:15:41","test01","TERM_STUDY","COO","view_proposed","-",4.5
 "2026-11-25 12:15:46","test01","TERM_STUDY","CPO","view_proposed","-",3.7
+"2026-11-25 12:15:52","test01","TERM_STUDY","CSR報告書","view_proposed","-",4.3
