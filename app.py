@@ -1,7 +1,7 @@
 """
-【FE-AI Tutor】基本情報技術者試験 初学者向け学習支援システム
-- 本番頻度重み付けサンプリング ＋ 出題数選択（10〜100問）対応版
-- 滞在時間・解答時間ログ計測 ＋ GitHub自動バックアップ対応
+【FE-AI Tutor】評価実験専用版（重点7分野 × 各15用語 ＝ 計105用語限定）
+- 既存のUI・ログ計測・GitHub自動バックアップ機能を維持しつつ、実験対象105用語のみを表示・出題
+- 実験条件切り替え（提案型フル機能 vs 従来型シンプル表示）対応
 """
 
 import os
@@ -19,13 +19,14 @@ import pandas as pd
 import streamlit as st
 
 st.set_page_config(
-    page_title="FE-AI Tutor | 基本情報技術者 学習支援",
+    page_title="FE-AI Tutor | 学習支援システム（評価実験版）",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 DB_FILE = "fe_study.db"
+EXP_TERMS_FILE = "experiment_105_terms.json"
 
 TARGET_7_CATEGORIES = [
     "3. コンピュータ構成要素",
@@ -59,6 +60,47 @@ st.markdown("""
     .content-box { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1.2rem; line-height: 1.8; }
 </style>
 """, unsafe_allow_html=True)
+
+# =========================================================
+# 厳選105用語の読み込み（JSON優先、未作成時はDBから各分野15用語を自動抽出）
+# =========================================================
+@st.cache_data
+def get_experiment_105_terms():
+    if os.path.exists(EXP_TERMS_FILE):
+        try:
+            with open(EXP_TERMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                terms = data.get("terms", [])
+                if terms:
+                    return set(terms)
+        except Exception:
+            pass
+
+    # JSONが無い場合のフォールバック：DBからイラスト付き優先で各分野15用語を取得
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT term_name FROM terms_master WHERE question_text IS NOT NULL AND TRIM(question_text) != ''")
+    valid_q_terms = {r["term_name"].strip() for r in cur.fetchall()}
+
+    selected = set()
+    for cat in TARGET_7_CATEGORIES:
+        cur.execute("SELECT term_name, image_path FROM terms WHERE sub_category LIKE ?", (f"%{cat}%",))
+        scored = []
+        for r in cur.fetchall():
+            t = r["term_name"].strip()
+            if t not in valid_q_terms:
+                continue
+            p = str(r["image_path"] or "").strip()
+            has_img = 1 if (p and p not in ("None", "nan") and os.path.exists(p)) else 0
+            scored.append((-has_img, t))
+        scored.sort()
+        for _, t in scored[:15]:
+            selected.add(t)
+    conn.close()
+    return selected
+
+EXP_105_SET = get_experiment_105_terms()
 
 # =========================================================
 # GitHub 自動ログ追記関数
@@ -188,6 +230,7 @@ def flush_term_duration(conn):
             ts = now_jst_str()
             uid = st.session_state["user_id"]
             tname = st.session_state["active_term"]
+            cond = st.session_state.get("exp_condition", "proposed")
 
             cur = conn.cursor()
             cur.execute("""
@@ -196,21 +239,19 @@ def flush_term_duration(conn):
             """, (uid, tname, elapsed, ts))
             conn.commit()
 
-            append_log_to_github(ts, uid, "TERM_STUDY", tname, "view", "-", elapsed)
+            append_log_to_github(ts, uid, "TERM_STUDY", tname, f"view_{cond}", "-", elapsed)
 
         st.session_state["active_term"] = None
 
 
 def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
     """
-    本番出題比率（CATEGORY_WEIGHTS）に基づく重み付けサンプリング、
-    または指定分野からのランダム抽出によって出題リスト（term_nameの配列）を生成する
+    厳選105用語（EXP_105_SET）の中から、本番出題比率または指定分野でランダム抽出する
     """
     cond_col = "question_text" if q_type_code == "Q1" else "q2_question_text"
     sampled_terms = []
 
     if sel_cat == "本番頻度重み付け（重点7分野ミックス）":
-        # 各重点分野の重みに応じて出題数を比例配分
         allocations = {}
         allocated_sum = 0
         for cat, weight in CATEGORY_WEIGHTS.items():
@@ -218,41 +259,42 @@ def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
             allocations[cat] = cnt
             allocated_sum += cnt
 
-        # 端数を重みの大きい分野から1問ずつ配分
         remainder = num_questions - allocated_sum
         sorted_cats_by_weight = sorted(CATEGORY_WEIGHTS.keys(), key=lambda c: CATEGORY_WEIGHTS[c], reverse=True)
         for i in range(remainder):
             target_c = sorted_cats_by_weight[i % len(sorted_cats_by_weight)]
             allocations[target_c] += 1
 
-        # 分野ごとにDBからランダム抽出
         for cat, target_cnt in allocations.items():
             if target_cnt <= 0:
                 continue
             cur.execute(
-                f"SELECT term_name FROM terms_master WHERE sub_category LIKE ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' ORDER BY RANDOM() LIMIT ?;",
-                (f"%{cat}%", target_cnt)
+                f"SELECT term_name FROM terms_master WHERE sub_category LIKE ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';",
+                (f"%{cat}%",)
             )
-            rows = [r["term_name"] for r in cur.fetchall()]
-            sampled_terms.extend(rows)
+            rows = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET]
+            random.shuffle(rows)
+            sampled_terms.extend(rows[:target_cnt])
 
-        # 不足分があれば重点7分野全体から重複なしで補充
+        # 不足分があれば105用語全体から重複なしで補充
         if len(sampled_terms) < num_questions:
             shortage = num_questions - len(sampled_terms)
-            placeholders = ",".join(["?"] * len(sampled_terms)) if sampled_terms else "''"
-            query = f"SELECT term_name FROM terms_master WHERE {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' AND term_name NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT ?;"
-            params = list(sampled_terms) + [shortage]
-            cur.execute(query, params)
-            sampled_terms.extend([r["term_name"] for r in cur.fetchall()])
+            cur.execute(
+                f"SELECT term_name FROM terms_master WHERE {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';"
+            )
+            pool = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET and r["term_name"] not in sampled_terms]
+            random.shuffle(pool)
+            sampled_terms.extend(pool[:shortage])
 
         random.shuffle(sampled_terms)
     else:
-        # 特定分野指定時の抽出
         cur.execute(
-            f"SELECT term_name FROM terms_master WHERE sub_category = ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '' ORDER BY RANDOM() LIMIT ?;",
-            (sel_cat, num_questions)
+            f"SELECT term_name FROM terms_master WHERE sub_category = ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';",
+            (sel_cat,)
         )
-        sampled_terms = [r["term_name"] for r in cur.fetchall()]
+        rows = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET]
+        random.shuffle(rows)
+        sampled_terms = rows[:num_questions]
 
     return sampled_terms[:num_questions]
 
@@ -266,35 +308,45 @@ if "active_term" not in st.session_state:
     st.session_state["active_term"] = None
 if "term_start_time" not in st.session_state:
     st.session_state["term_start_time"] = time.time()
+if "exp_condition" not in st.session_state:
+    st.session_state["exp_condition"] = "proposed"
 
 if not st.session_state["user_id"]:
-    st.title("🎓 FE-AI Tutor ログイン")
-    st.caption("基本情報技術者試験（科目A）初学者特化型 学習支援システム")
+    st.title("🎓 FE-AI Tutor ログイン（評価実験版）")
+    st.caption("基本情報技術者試験（科目A）重点7分野・厳選105用語 学習支援システム")
     
     col1, col2 = st.columns([1, 1])
     with col1:
         st.markdown("### 被験者ログイン")
-        user_input = st.text_input("被験者IDを入力してください:", placeholder="例: user01, student01")
+        user_input = st.text_input("被験者IDを入力してください:", placeholder="例: user01")
+        cond_label = st.radio(
+            "実験条件（担当者の指示どおり選択してください）:",
+            ["提案システム（図解・比喩・実例・詳細解説あり）", "比較用従来型（公式定義・問題演習のみ）"]
+        )
         if st.button("学習を開始する", type="primary"):
             if user_input.strip():
                 uid = user_input.strip()
+                cond_code = "proposed" if "提案システム" in cond_label else "baseline"
                 st.session_state["user_id"] = uid
-                append_log_to_github(now_jst_str(), uid, "LOGIN", "-", "start", "-", 0)
+                st.session_state["exp_condition"] = cond_code
+                append_log_to_github(now_jst_str(), uid, "LOGIN", "-", f"start_{cond_code}", "-", 0)
                 st.rerun()
             else:
                 st.warning("IDを入力してください。")
     with col2:
         st.info("""
-        **【本システムの学習アプローチ（被験者ガイダンス）】**
-        - **用語概要の把握**: シラバス公式定義に基づく基礎知識の定着
-        - **視覚的構造理解**: 概念の動作や対比を大判インフォグラフィックで直感把握
-        - **多面的解釈の深掘り**: 試験着眼点・日常比喩・実用例による理解の多角化
-        - **本番頻度再現演習**: 出題比率重み付けサンプリングによる実践的な4択演習
+        **【学習の進め方（推奨ガイド）】**
+        - **前半（約15分）：「💡 用語学習」**
+          重点7分野（各15用語）から気になる用語を選び、構造や意味を確認しましょう。
+        - **後半（約10分）：「📝 問題演習」**
+          10問セットなどで理解度を確認しましょう。
+        - 終了時は必ず左側の**「ログアウト」**ボタンを押してください。
         """)
     st.stop()
 
 conn = get_db()
 cur = conn.cursor()
+is_proposed = (st.session_state.get("exp_condition", "proposed") == "proposed")
 
 # =========================================================
 # 2. サイドバー
@@ -302,7 +354,7 @@ cur = conn.cursor()
 st.sidebar.markdown(f"👤 **ログイン中:** `{st.session_state['user_id']}`")
 if st.sidebar.button("ログアウト"):
     flush_term_duration(conn)
-    append_log_to_github(now_jst_str(), st.session_state["user_id"], "LOGOUT", "-", "end", "-", 0)
+    append_log_to_github(now_jst_str(), st.session_state["user_id"], "LOGOUT", "-", f"end_{st.session_state.get('exp_condition')}", "-", 0)
     st.session_state["user_id"] = None
     st.rerun()
 
@@ -323,10 +375,10 @@ def sort_categories(cat_list):
 # =========================================================
 
 # ---------------------------------------------------------
-# A. 用語学習モード
+# A. 用語学習モード（重点7分野 × 各15用語限定）
 # ---------------------------------------------------------
 if mode == "💡 用語学習":
-    st.sidebar.subheader("🔍 用語を探す")
+    st.sidebar.subheader("🔍 用語を探す（厳選105用語）")
     
     search_keyword = st.sidebar.text_input("用語名で検索 (部分一致):", placeholder="例: TCP, 暗号化, DNS...")
     selected_term = None
@@ -339,7 +391,7 @@ if mode == "💡 用語学習":
             WHERE term_name LIKE ? OR official_def LIKE ?
             ORDER BY term_name;
         """, (keyword_param, keyword_param))
-        search_results = cur.fetchall()
+        search_results = [r for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET]
 
         if search_results:
             result_options = {f"{r['term_name']} （{r['sub_category']}）": r['term_name'] for r in search_results}
@@ -349,23 +401,20 @@ if mode == "💡 用語学習":
             st.sidebar.warning(f"「{search_keyword}」に一致する用語は見つかりませんでした。")
     else:
         cur.execute("SELECT DISTINCT sub_category FROM terms WHERE sub_category IS NOT NULL;")
-        raw_cats = [row["sub_category"] for row in cur.fetchall()]
+        raw_cats = [
+            row["sub_category"] for row in cur.fetchall()
+            if any(t_cat in str(row["sub_category"]) for t_cat in TARGET_7_CATEGORIES)
+        ]
         sorted_cats = sort_categories(raw_cats)
 
-        cat_display_map = {}
-        for c in sorted_cats:
-            if any(t_cat in c for t_cat in TARGET_7_CATEGORIES):
-                display_label = f"🚩 {c}"
-            else:
-                display_label = f"    {c}  (対象外)"
-            cat_display_map[display_label] = c
+        cat_display_map = {f"🚩 {c}": c for c in sorted_cats}
 
-        selected_label = st.sidebar.selectbox("📂 分野を選択 (1〜23)", list(cat_display_map.keys()))
+        selected_label = st.sidebar.selectbox("📂 重点7分野を選択", list(cat_display_map.keys()))
         selected_cat = cat_display_map[selected_label]
 
         cur.execute("SELECT term_name FROM terms WHERE sub_category = ? ORDER BY term_name;", (selected_cat,))
-        terms = [row["term_name"] for row in cur.fetchall()]
-        selected_term = st.sidebar.selectbox("🔍 用語を選択", terms)
+        terms = [row["term_name"] for row in cur.fetchall() if row["term_name"].strip() in EXP_105_SET]
+        selected_term = st.sidebar.selectbox(f"🔍 用語を選択（全{len(terms)}語）", terms)
 
     if selected_term:
         if st.session_state["active_term"] != selected_term:
@@ -377,16 +426,10 @@ if mode == "💡 用語学習":
         tdata = cur.fetchone()
 
         if tdata:
-            is_target_7 = any(tc in str(tdata["sub_category"]) for tc in TARGET_7_CATEGORIES)
-            
             badge_html = f'<div class="badge-cat">分類: {tdata["sub_category"]}</div>'
-            if is_target_7:
-                badge_html += '<span class="badge-target">★ 本研究 重点対象分野</span>'
+            badge_html += '<span class="badge-target">★ 実験対象 重点7分野</span>'
             st.markdown(badge_html, unsafe_allow_html=True)
             st.markdown(f'<div class="main-title">{tdata["term_name"]}</div>', unsafe_allow_html=True)
-
-            if not is_target_7:
-                st.caption("ℹ️ この用語は本研究の選定7分野以外の項目です。用語概要や基本演習のみご利用いただけます。")
 
             off_def = tdata["official_def"]
             if not off_def or str(off_def).strip() in ["", "None", "nan"]:
@@ -399,51 +442,56 @@ if mode == "💡 用語学習":
             </div>
             """, unsafe_allow_html=True)
 
-            img_path = tdata["image_path"]
-            if img_path and os.path.exists(img_path):
-                st.markdown("##### 🖼️ 構造対比インフォグラフィック")
-                st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
-                st.write("")
+            # 提案システム（フル機能）の場合のみ図解と3タブ多層解説を表示
+            if is_proposed:
+                img_path = tdata["image_path"]
+                if img_path and os.path.exists(img_path):
+                    st.markdown("##### 🖼️ 構造対比インフォグラフィック")
+                    st.image(img_path, caption=f"【概念図解】{tdata['term_name']}", use_container_width=True)
+                    st.write("")
 
-            t_exam, t_meta, t_prac = st.tabs([
-                "📖 試験対策（着眼点とキーワード）",
-                "💡 直感理解（日常の比喩）",
-                "🌍 実社会での活用例"
-            ])
+                t_exam, t_meta, t_prac = st.tabs([
+                    "📖 試験対策（着眼点とキーワード）",
+                    "💡 直感理解（日常の比喩）",
+                    "🌍 実社会での活用例"
+                ])
 
-            with t_exam:
-                st.subheader("🎯 試験の決め手 ＆ 動作ロジック")
-                exam_text = tdata["exam_point_text"]
-                if exam_text and str(exam_text).strip() not in ["", "None", "nan"]:
-                    st.info(exam_text)
-                else:
-                    st.warning("試験直結解説テキストは準備中です。")
+                with t_exam:
+                    st.subheader("🎯 試験の決め手 ＆ 動作ロジック")
+                    exam_text = tdata["exam_point_text"]
+                    if exam_text and str(exam_text).strip() not in ["", "None", "nan"]:
+                        st.info(exam_text)
+                    else:
+                        st.warning("試験直結解説テキストは準備中です。")
 
-            with t_meta:
-                st.subheader("💡 日常の生活シーンに例えると？")
-                meta_text = tdata["metaphor_def"]
-                if meta_text and str(meta_text).strip() not in ["", "None", "nan"]:
-                    st.success(meta_text)
-                else:
-                    st.warning("比喩解説は準備中です。")
+                with t_meta:
+                    st.subheader("💡 日常の生活シーンに例えると？")
+                    meta_text = tdata["metaphor_def"]
+                    if meta_text and str(meta_text).strip() not in ["", "None", "nan"]:
+                        st.success(meta_text)
+                    else:
+                        st.warning("比喩解説は準備中です。")
 
-            with t_prac:
-                st.subheader("🌍 身近なITサービスや実社会での使われ方")
-                prac_text = tdata["practical_ex"]
-                if prac_text and str(prac_text).strip() not in ["", "None", "nan"]:
-                    st.markdown(f'<div class="content-box">{prac_text}</div>', unsafe_allow_html=True)
-                else:
-                    st.warning("実用例は準備中です。")
+                with t_prac:
+                    st.subheader("🌍 身近なITサービスや実社会での使われ方")
+                    prac_text = tdata["practical_ex"]
+                    if prac_text and str(prac_text).strip() not in ["", "None", "nan"]:
+                        st.markdown(f'<div class="content-box">{prac_text}</div>', unsafe_allow_html=True)
+                    else:
+                        st.warning("実用例は準備中です。")
 
 # ---------------------------------------------------------
-# B. 問題演習モード（重み付け抽出 ＋ 出題数10〜100問選択対応）
+# B. 問題演習モード（重点7分野 × 各15用語限定）
 # ---------------------------------------------------------
 elif mode == "📝 問題演習":
     st.title("📝 基本情報技術者（科目A）問題演習")
-    st.caption("本番の出題傾向を再現した重み付けサンプリング、または分野指定で実践演習を行います。")
+    st.caption("重点7分野（厳選105用語）から、重み付けまたは分野指定で実践演習を行います。")
 
     cur.execute("SELECT DISTINCT sub_category FROM terms_master WHERE question_text IS NOT NULL;")
-    raw_q_cats = [r["sub_category"] for r in cur.fetchall()]
+    raw_q_cats = [
+        r["sub_category"] for r in cur.fetchall()
+        if any(tc in str(r["sub_category"]) for tc in TARGET_7_CATEGORIES)
+    ]
     sorted_q_cats = sort_categories(raw_q_cats)
 
     col_q1, col_q2 = st.columns([1, 2])
@@ -452,7 +500,7 @@ elif mode == "📝 問題演習":
         q_options = ["🎯 本番頻度重み付け（重点7分野ミックス）"]
         q_map = {"🎯 本番頻度重み付け（重点7分野ミックス）": "本番頻度重み付け（重点7分野ミックス）"}
         for qc in sorted_q_cats:
-            label = f"✨ {qc}" if any(tc in qc for tc in TARGET_7_CATEGORIES) else f"   {qc}"
+            label = f"✨ {qc}"
             q_options.append(label)
             q_map[label] = qc
 
@@ -462,7 +510,7 @@ elif mode == "📝 問題演習":
         q_type = st.radio("問題タイプ", ["【基本】正解を見抜く問題 (Q1)", "【応用】誤りを見抜く問題 (Q2)"])
         q_type_code = "Q1" if "Q1" in q_type else "Q2"
 
-        num_questions = st.selectbox("出題問題数を選択", [10, 20, 30, 60, 100], index=0, format_func=lambda x: f"{x} 問セット")
+        num_questions = st.selectbox("出題問題数を選択", [10, 15, 20, 30], index=0, format_func=lambda x: f"{x} 問セット")
 
         if st.button("🚀 新しい演習セットを開始（リセット）", type="secondary", use_container_width=True):
             st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
@@ -473,7 +521,6 @@ elif mode == "📝 問題演習":
             st.session_state["q_start_time"] = time.time()
             st.rerun()
 
-    # 初回または設定変更時に自動で出題セットを生成
     current_sig = f"{sel_q_cat}_{q_type_code}_{num_questions}"
     if st.session_state.get("quiz_config_sig") != current_sig or "quiz_queue" not in st.session_state:
         st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
@@ -491,7 +538,6 @@ elif mode == "📝 問題演習":
         if total_in_set == 0:
             st.warning("選択された条件に該当する問題が見つかりませんでした。別の分野や問題タイプをお試しください。")
         elif idx >= total_in_set:
-            # セット完了画面
             score = st.session_state.get("quiz_score", 0)
             rate = (score / total_in_set) * 100
             st.success(f"🎊 演習セット完了！ 成績: **{score} / {total_in_set} 問正解（正答率 {rate:.1f}%）**")
@@ -503,7 +549,6 @@ elif mode == "📝 問題演習":
                 st.session_state["q_start_time"] = time.time()
                 st.rerun()
         else:
-            # 進捗バーと現在の問題表示
             st.progress((idx + 1) / total_in_set, text=f"進捗: 第 {idx + 1} 問 / 全 {total_in_set} 問 （現在の正解数: {st.session_state.get('quiz_score', 0)}問）")
             current_term = queue[idx]
             cur.execute("SELECT * FROM terms_master WHERE term_name = ?;", (current_term,))
@@ -551,10 +596,11 @@ elif mode == "📝 問題演習":
                         else:
                             st.error(f"不正解です。（正解: {correct} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
 
-                        with st.expander("💡 初学者向け分かりやすい解説", expanded=True):
-                            st.write(q_data["explanation_beginner"])
-                        with st.expander("🔬 理系・技術的詳細解説", expanded=True):
-                            st.write(q_data["explanation_advanced"])
+                        if is_proposed:
+                            with st.expander("💡 初学者向け分かりやすい解説", expanded=True):
+                                st.write(q_data["explanation_beginner"])
+                            with st.expander("🔬 理系・技術的詳細解説", expanded=True):
+                                st.write(q_data["explanation_advanced"])
 
                         if st.button("➡️ 次の問題へ進む", type="primary", key=f"next_q1_{idx}"):
                             st.session_state["quiz_index"] += 1
@@ -601,8 +647,9 @@ elif mode == "📝 問題演習":
                         else:
                             st.error(f"不正解です。（正解: {correct2} / 解答時間: {st.session_state.get('last_resp_sec')}秒）")
 
-                        with st.expander("💡 解説を確認する", expanded=True):
-                            st.write(q_data["q2_exp_beginner_final"])
+                        if is_proposed:
+                            with st.expander("💡 解説を確認する", expanded=True):
+                                st.write(q_data["q2_exp_beginner_final"])
 
                         if st.button("➡️ 次の問題へ進む", type="primary", key=f"next_q2_{idx}"):
                             st.session_state["quiz_index"] += 1
