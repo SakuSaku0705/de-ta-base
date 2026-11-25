@@ -1,7 +1,8 @@
 """
-【FE-AI Tutor】評価実験専用版（重点7分野 × 各15用語 ＝ 計105用語限定）
+【FE-AI Tutor】評価実験専用版（重点7分野・厳選用語限定）
 - 読み取り専用マスターDB（fe_study.db）と書き込み用ログDB（experiment_logs.db）を完全分離
-- 既存のUI・ログ計測・GitHub自動バックアップ機能を維持しつつ、実験対象105用語のみを表示・出題
+- Q1（適切なものを選択）とQ2（不適切なものを選択）のランダムミックス出題対応
+- 既存のUI・ログ計測・GitHub自動バックアップ機能を維持
 - 実験条件切り替え（提案型フル機能 vs 従来型シンプル表示）対応
 """
 
@@ -76,7 +77,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 厳選105用語の読み込み（JSON優先、未作成時はDBから各分野15用語を自動抽出）
+# 実験対象用語の読み込み
 # =========================================================
 @st.cache_data
 def get_experiment_105_terms():
@@ -90,7 +91,6 @@ def get_experiment_105_terms():
         except Exception:
             pass
 
-    # JSONが無い場合のフォールバック：DBからイラスト付き優先で各分野15用語を取得
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT term_name FROM terms_master WHERE question_text IS NOT NULL AND TRIM(question_text) != ''")
@@ -254,14 +254,36 @@ def flush_term_duration():
         st.session_state["active_term"] = None
 
 
-def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
+def assign_random_q_types(cur, term_names):
+    """用語リストの各用語に対して、DBにある有効な問題タイプ(Q1/Q2)からランダムに1つ割り当てる"""
+    result = []
+    for tname in term_names:
+        cur.execute(
+            "SELECT question_text, q2_question_text FROM terms_master WHERE term_name = ?;",
+            (tname,)
+        )
+        row = cur.fetchone()
+        if not row:
+            continue
+        available_types = []
+        if row["question_text"] and str(row["question_text"]).strip():
+            available_types.append("Q1")
+        if row["q2_question_text"] and str(row["q2_question_text"]).strip():
+            available_types.append("Q2")
+        if available_types:
+            result.append((tname, random.choice(available_types)))
+    return result
+
+
+def build_weighted_question_set(cur, sel_cat, num_questions):
     """
-    厳選105用語（EXP_105_SET）の中から、本番出題比率または指定分野でランダム抽出する
+    実験対象用語（EXP_105_SET）の中から、本番出題比率または指定分野でランダム抽出し、
+    Q1（適切なもの）とQ2（不適切なもの）をランダムにミックスした [(term_name, q_type), ...] を返す
     """
-    cond_col = "question_text" if q_type_code == "Q1" else "q2_question_text"
+    valid_cond = "((question_text IS NOT NULL AND TRIM(question_text) != '') OR (q2_question_text IS NOT NULL AND TRIM(q2_question_text) != ''))"
     sampled_terms = []
 
-    if sel_cat == "本番頻度重み付け（重点7分野ミックス）":
+    if sel_cat == "重点7分野":
         allocations = {}
         allocated_sum = 0
         for cat, weight in CATEGORY_WEIGHTS.items():
@@ -279,19 +301,16 @@ def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
             if target_cnt <= 0:
                 continue
             cur.execute(
-                f"SELECT term_name FROM terms_master WHERE sub_category LIKE ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';",
+                f"SELECT term_name FROM terms_master WHERE sub_category LIKE ? AND {valid_cond};",
                 (f"%{cat}%",)
             )
             rows = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET]
             random.shuffle(rows)
             sampled_terms.extend(rows[:target_cnt])
 
-        # 不足分があれば105用語全体から重複なしで補充
         if len(sampled_terms) < num_questions:
             shortage = num_questions - len(sampled_terms)
-            cur.execute(
-                f"SELECT term_name FROM terms_master WHERE {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';"
-            )
+            cur.execute(f"SELECT term_name FROM terms_master WHERE {valid_cond};")
             pool = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET and r["term_name"] not in sampled_terms]
             random.shuffle(pool)
             sampled_terms.extend(pool[:shortage])
@@ -299,14 +318,14 @@ def build_weighted_question_set(cur, sel_cat, q_type_code, num_questions):
         random.shuffle(sampled_terms)
     else:
         cur.execute(
-            f"SELECT term_name FROM terms_master WHERE sub_category = ? AND {cond_col} IS NOT NULL AND TRIM({cond_col}) != '';",
+            f"SELECT term_name FROM terms_master WHERE sub_category = ? AND {valid_cond};",
             (sel_cat,)
         )
         rows = [r["term_name"] for r in cur.fetchall() if r["term_name"].strip() in EXP_105_SET]
         random.shuffle(rows)
         sampled_terms = rows[:num_questions]
 
-    return sampled_terms[:num_questions]
+    return assign_random_q_types(cur, sampled_terms[:num_questions])
 
 
 # =========================================================
@@ -323,7 +342,7 @@ if "exp_condition" not in st.session_state:
 
 if not st.session_state["user_id"]:
     st.title("🎓 FE-AI Tutor ログイン（評価実験版）")
-    st.caption("基本情報技術者試験（科目A）重点7分野・厳選105用語 学習支援システム")
+    st.caption("基本情報技術者試験（科目A）重点7分野・厳選用語 学習支援システム")
     
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -347,7 +366,7 @@ if not st.session_state["user_id"]:
         st.info("""
         **【学習の進め方（推奨ガイド）】**
         - **前半（約15分）：「💡 用語学習」**
-          重点7分野（各15用語）から気になる用語を選び、構造や意味を確認しましょう。
+          重点7分野から気になる用語を選び、構造や意味を確認しましょう。
         - **後半（約10分）：「📝 問題演習」**
           10問セットなどで理解度を確認しましょう。
         - 終了時は必ず左側の**「ログアウト」**ボタンを押してください。
@@ -385,10 +404,10 @@ def sort_categories(cat_list):
 # =========================================================
 
 # ---------------------------------------------------------
-# A. 用語学習モード（重点7分野 × 各15用語限定）
+# A. 用語学習モード（重点7分野・厳選用語限定）
 # ---------------------------------------------------------
 if mode == "💡 用語学習":
-    st.sidebar.subheader("🔍 用語を探す（厳選105用語）")
+    st.sidebar.subheader(f"🔍 用語を探す（全{len(EXP_105_SET)}語）")
     
     search_keyword = st.sidebar.text_input("用語名で検索 (部分一致):", placeholder="例: TCP, 暗号化, DNS...")
     selected_term = None
@@ -491,11 +510,11 @@ if mode == "💡 用語学習":
                         st.warning("実用例は準備中です。")
 
 # ---------------------------------------------------------
-# B. 問題演習モード（重点7分野 × 各15用語限定）
+# B. 問題演習モード（Q1・Q2ランダムミックス出題）
 # ---------------------------------------------------------
 elif mode == "📝 問題演習":
     st.title("📝 基本情報技術者（科目A）問題演習")
-    st.caption("重点7分野（厳選105用語）から、重み付けまたは分野指定で実践演習を行います。")
+    st.caption("本番試験と同様に、「適切なものを選ぶ問題」と「不適切なものを選ぶ問題」がランダムに出題されます。")
 
     cur.execute("SELECT DISTINCT sub_category FROM terms_master WHERE question_text IS NOT NULL;")
     raw_q_cats = [
@@ -507,33 +526,30 @@ elif mode == "📝 問題演習":
     col_q1, col_q2 = st.columns([1, 2])
     with col_q1:
         st.markdown("#### ⚙️ 演習セット設定")
-        q_options = ["🎯 本番頻度重み付け（重点7分野ミックス）"]
-        q_map = {"🎯 本番頻度重み付け（重点7分野ミックス）": "本番頻度重み付け（重点7分野ミックス）"}
+        q_options = ["重点7分野"]
+        q_map = {"重点7分野": "重点7分野"}
         for qc in sorted_q_cats:
             label = f"✨ {qc}"
             q_options.append(label)
             q_map[label] = qc
 
-        sel_q_label = st.selectbox("出題モード・分野を選択", q_options)
+        sel_q_label = st.selectbox("出題分野を選択", q_options)
         sel_q_cat = q_map[sel_q_label]
-
-        q_type = st.radio("問題タイプ", ["【基本】正解を見抜く問題 (Q1)", "【応用】誤りを見抜く問題 (Q2)"])
-        q_type_code = "Q1" if "Q1" in q_type else "Q2"
 
         num_questions = st.selectbox("出題問題数を選択", [10, 15, 20, 30], index=0, format_func=lambda x: f"{x} 問セット")
 
         if st.button("🚀 新しい演習セットを開始（リセット）", type="secondary", use_container_width=True):
-            st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+            st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, num_questions)
             st.session_state["quiz_index"] = 0
             st.session_state["quiz_score"] = 0
             st.session_state["quiz_answered"] = False
-            st.session_state["quiz_config_sig"] = f"{sel_q_cat}_{q_type_code}_{num_questions}"
+            st.session_state["quiz_config_sig"] = f"{sel_q_cat}_MIX_{num_questions}"
             st.session_state["q_start_time"] = time.time()
             st.rerun()
 
-    current_sig = f"{sel_q_cat}_{q_type_code}_{num_questions}"
+    current_sig = f"{sel_q_cat}_MIX_{num_questions}"
     if st.session_state.get("quiz_config_sig") != current_sig or "quiz_queue" not in st.session_state:
-        st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+        st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, num_questions)
         st.session_state["quiz_index"] = 0
         st.session_state["quiz_score"] = 0
         st.session_state["quiz_answered"] = False
@@ -546,13 +562,13 @@ elif mode == "📝 問題演習":
 
     with col_q2:
         if total_in_set == 0:
-            st.warning("選択された条件に該当する問題が見つかりませんでした。別の分野や問題タイプをお試しください。")
+            st.warning("選択された条件に該当する問題が見つかりませんでした。別の分野をお試しください。")
         elif idx >= total_in_set:
             score = st.session_state.get("quiz_score", 0)
             rate = (score / total_in_set) * 100
             st.success(f"🎊 演習セット完了！ 成績: **{score} / {total_in_set} 問正解（正答率 {rate:.1f}%）**")
             if st.button("🔄 同じ設定でもう1セット解く", type="primary"):
-                st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, q_type_code, num_questions)
+                st.session_state["quiz_queue"] = build_weighted_question_set(cur, sel_q_cat, num_questions)
                 st.session_state["quiz_index"] = 0
                 st.session_state["quiz_score"] = 0
                 st.session_state["quiz_answered"] = False
@@ -560,7 +576,13 @@ elif mode == "📝 問題演習":
                 st.rerun()
         else:
             st.progress((idx + 1) / total_in_set, text=f"進捗: 第 {idx + 1} 問 / 全 {total_in_set} 問 （現在の正解数: {st.session_state.get('quiz_score', 0)}問）")
-            current_term = queue[idx]
+            current_item = queue[idx]
+            # 旧形式(str)との互換性を保ちつつ (term_name, q_type_code) を展開
+            if isinstance(current_item, (tuple, list)):
+                current_term, q_type_code = current_item[0], current_item[1]
+            else:
+                current_term, q_type_code = current_item, "Q1"
+
             cur.execute("SELECT * FROM terms_master WHERE term_name = ?;", (current_term,))
             q_data = cur.fetchone()
 
