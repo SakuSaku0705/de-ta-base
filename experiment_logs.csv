@@ -132,3 +132,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:22:42","test01","TERM_STUDY","CRYPTREC","view_proposed","-",4.9
 "2026-11-25 12:22:58","test01","TERM_STUDY","CTR","view_proposed","-",14.4
 "2026-11-25 12:23:03","test01","TERM_STUDY","DMZ","view_proposed","-",3.0
+"2026-11-25 12:23:07","test01","TERM_STUDY","DNSSEC","view_proposed","-",2.6
