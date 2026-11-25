@@ -164,3 +164,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 14:09:13","test01","TERM_STUDY","BLE","view_proposed","-",19.9
 "2026-11-25 14:09:19","test01","TERM_STUDY","FLOPS","view_proposed","-",4.1
 "2026-11-25 14:09:21","test01","TERM_STUDY","FLOPS","view_proposed","-",5.9
+"2026-11-25 14:09:24","test01","TERM_STUDY","1000BASE-T","view_proposed","-",1.6
