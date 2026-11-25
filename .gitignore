@@ -2,3 +2,13 @@
 __pycache__/
 .DS_Store
 gcp_key.json
+
+# 認証キー・一時ログDB・環境ファイルの除外
+*.json.key
+*credentials*.json
+*gcp*.json
+.env
+.streamlit/secrets.toml
+experiment_logs.db
+__pycache__/
+.DS_Store

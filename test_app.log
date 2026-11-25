@@ -10,3 +10,6 @@
 [2026-10-27 00:49:43] [INFO]: TEST_USER_LOGIN: user_id=G23937, major=情報科学科・理系
 [2026-10-27 00:49:46] [INFO]: PRE_TEST_START: user_id=G23937
 [2026-10-27 00:54:19] [INFO]: TEST_COMPLETED: user=G23937, type=事前テスト, score=3/10
+[2026-11-24 14:35:31] [INFO]: TEST_USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-11-24 16:11:31] [INFO]: TEST_USER_LOGIN: user_id=test01
+[2026-11-24 16:12:10] [INFO]: TEST_USER_LOGIN: user_id=test01
