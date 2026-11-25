@@ -1,5 +1,6 @@
 """
 【FE-AI Tutor】評価実験専用版（重点7分野 × 各15用語 ＝ 計105用語限定）
+- 読み取り専用マスターDB（fe_study.db）と書き込み用ログDB（experiment_logs.db）を完全分離
 - 既存のUI・ログ計測・GitHub自動バックアップ機能を維持しつつ、実験対象105用語のみを表示・出題
 - 実験条件切り替え（提案型フル機能 vs 従来型シンプル表示）対応
 """
@@ -26,7 +27,20 @@ st.set_page_config(
 )
 
 DB_FILE = "fe_study.db"
+LOG_DB_FILE = "experiment_logs.db"  # 書き込み用ログDBを分離
 EXP_TERMS_FILE = "experiment_105_terms.json"
+
+def get_db():
+    # マスターDBは読み取り専用モード（URI=True, mode=ro）で開く
+    conn = sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def get_log_db():
+    # ログ書き込み用DBは別ファイルとして開く
+    conn = sqlite3.connect(LOG_DB_FILE, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 TARGET_7_CATEGORIES = [
     "3. コンピュータ構成要素",
@@ -77,8 +91,7 @@ def get_experiment_105_terms():
             pass
 
     # JSONが無い場合のフォールバック：DBからイラスト付き優先で各分野15用語を取得
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT term_name FROM terms_master WHERE question_text IS NOT NULL AND TRIM(question_text) != ''")
     valid_q_terms = {r["term_name"].strip() for r in cur.fetchall()}
@@ -168,14 +181,9 @@ def append_log_to_github(timestamp_str, user_id, action_type, term_name, detail,
         pass
 
 
-def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
+@st.cache_resource
 def init_log_tables():
-    conn = get_db()
+    conn = get_log_db()
     cur = conn.cursor()
     
     cur.execute("""
@@ -222,8 +230,8 @@ def now_jst_str():
     return datetime.datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def flush_term_duration(conn):
-    """直前に閲覧していた用語の滞在時間を確定してDBとGitHubに保存する"""
+def flush_term_duration():
+    """直前に閲覧していた用語の滞在時間を確定してログDBとGitHubに保存する"""
     if "active_term" in st.session_state and st.session_state["active_term"]:
         elapsed = round(time.time() - st.session_state["term_start_time"], 1)
         if 1.0 <= elapsed <= 600.0:
@@ -232,12 +240,14 @@ def flush_term_duration(conn):
             tname = st.session_state["active_term"]
             cond = st.session_state.get("exp_condition", "proposed")
 
-            cur = conn.cursor()
+            log_conn = get_log_db()
+            cur = log_conn.cursor()
             cur.execute("""
                 INSERT INTO term_logs (user_id, term_name, duration_seconds, viewed_at)
                 VALUES (?, ?, ?, ?);
             """, (uid, tname, elapsed, ts))
-            conn.commit()
+            log_conn.commit()
+            log_conn.close()
 
             append_log_to_github(ts, uid, "TERM_STUDY", tname, f"view_{cond}", "-", elapsed)
 
@@ -353,7 +363,7 @@ is_proposed = (st.session_state.get("exp_condition", "proposed") == "proposed")
 # =========================================================
 st.sidebar.markdown(f"👤 **ログイン中:** `{st.session_state['user_id']}`")
 if st.sidebar.button("ログアウト"):
-    flush_term_duration(conn)
+    flush_term_duration()
     append_log_to_github(now_jst_str(), st.session_state["user_id"], "LOGOUT", "-", f"end_{st.session_state.get('exp_condition')}", "-", 0)
     st.session_state["user_id"] = None
     st.rerun()
@@ -362,7 +372,7 @@ st.sidebar.divider()
 mode = st.sidebar.radio("📚 モードを選択", ["💡 用語学習", "📝 問題演習", "📊 学習履歴・分析"])
 
 if mode != "💡 用語学習":
-    flush_term_duration(conn)
+    flush_term_duration()
 
 def sort_categories(cat_list):
     def get_num(cat_str):
@@ -418,7 +428,7 @@ if mode == "💡 用語学習":
 
     if selected_term:
         if st.session_state["active_term"] != selected_term:
-            flush_term_duration(conn)
+            flush_term_duration()
             st.session_state["active_term"] = selected_term
             st.session_state["term_start_time"] = time.time()
 
@@ -574,11 +584,14 @@ elif mode == "📝 問題演習":
                         ts = now_jst_str()
                         uid = st.session_state["user_id"]
 
-                        cur.execute("""
+                        log_conn = get_log_db()
+                        log_cur = log_conn.cursor()
+                        log_cur.execute("""
                             INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
                             VALUES (?, ?, 'Q1', ?, ?, ?, ?);
                         """, (uid, q_data["term_name"], ans[:1], is_corr, resp_sec, ts))
-                        conn.commit()
+                        log_conn.commit()
+                        log_conn.close()
 
                         append_log_to_github(ts, uid, "QUIZ_Q1", q_data["term_name"], ans[:1], is_corr, resp_sec)
 
@@ -625,11 +638,14 @@ elif mode == "📝 問題演習":
                         ts2 = now_jst_str()
                         uid = st.session_state["user_id"]
 
-                        cur.execute("""
+                        log_conn = get_log_db()
+                        log_cur = log_conn.cursor()
+                        log_cur.execute("""
                             INSERT INTO quiz_logs (user_id, term_name, question_type, selected_choice, is_correct, response_time_seconds, answered_at)
                             VALUES (?, ?, 'Q2', ?, ?, ?, ?);
                         """, (uid, q_data["term_name"], ans2[:1], is_corr2, resp_sec2, ts2))
-                        conn.commit()
+                        log_conn.commit()
+                        log_conn.close()
 
                         append_log_to_github(ts2, uid, "QUIZ_Q2", q_data["term_name"], ans2[:1], is_corr2, resp_sec2)
 
@@ -663,8 +679,11 @@ elif mode == "📝 問題演習":
 elif mode == "📊 学習履歴・分析":
     st.title(f"📊 学習履歴: {st.session_state['user_id']}")
 
-    cur.execute("SELECT * FROM quiz_logs WHERE user_id = ? ORDER BY answered_at DESC;", (st.session_state["user_id"],))
-    logs = cur.fetchall()
+    log_conn = get_log_db()
+    log_cur = log_conn.cursor()
+    log_cur.execute("SELECT * FROM quiz_logs WHERE user_id = ? ORDER BY answered_at DESC;", (st.session_state["user_id"],))
+    logs = log_cur.fetchall()
+    log_conn.close()
 
     if logs:
         df_logs = pd.DataFrame([dict(r) for r in logs])
