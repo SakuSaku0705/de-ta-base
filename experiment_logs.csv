@@ -159,3 +159,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 14:00:01","test01","TERM_STUDY","BLE","view_proposed","-",5.7
 "2026-11-25 14:02:46","test01","TERM_STUDY","Administrator","view_proposed","-",162.1
 "2026-11-25 14:05:27","test01","LOGIN","-","start_proposed","-",0
+"2026-11-25 14:08:48","test01","TERM_STUDY","BLE","view_proposed","-",198.9
