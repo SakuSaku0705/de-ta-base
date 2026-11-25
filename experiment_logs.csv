@@ -105,3 +105,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:16:19","test01","TERM_STUDY","OC曲線","view_proposed","-",4.6
 "2026-11-25 12:16:26","test01","TERM_STUDY","PDPC","view_proposed","-",5.6
 "2026-11-25 12:16:30","test01","TERM_STUDY","PTS法","view_proposed","-",2.6
+"2026-11-25 12:16:40","test01","TERM_STUDY","ROA","view_proposed","-",8.7
