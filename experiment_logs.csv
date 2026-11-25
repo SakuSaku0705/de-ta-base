@@ -187,3 +187,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 14:23:20","test01","TERM_STUDY","API","view_proposed","-",3.9
 "2026-11-25 14:43:19","test01","LOGIN","-","start_baseline","-",0
 "2026-11-25 14:43:28","test01","TERM_STUDY","BLE","view_baseline","-",7.7
+"2026-11-25 15:05:11","test01","LOGIN","-","start_proposed","-",0
