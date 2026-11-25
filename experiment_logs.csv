@@ -93,3 +93,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:15:10","test01","TERM_STUDY","PTS法","view_proposed","-",9.7
 "2026-11-25 12:15:16","test01","TERM_STUDY","BCM","view_proposed","-",4.3
 "2026-11-25 12:15:21","test01","TERM_STUDY","BCP","view_proposed","-",3.5
+"2026-11-25 12:15:26","test01","TERM_STUDY","BI","view_proposed","-",3.0
