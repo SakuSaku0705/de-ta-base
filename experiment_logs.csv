@@ -85,3 +85,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:14:18","test01","TERM_STUDY","A/Dコンバータ","view_proposed","-",2.8
 "2026-11-25 12:14:23","test01","TERM_STUDY","AND回路","view_proposed","-",3.0
 "2026-11-25 12:14:37","test01","TERM_STUDY","BLE","view_proposed","-",12.4
+"2026-11-25 12:14:41","test01","TERM_STUDY","Bluetooth","view_proposed","-",3.0
