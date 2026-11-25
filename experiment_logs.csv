@@ -112,3 +112,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:17:04","test01","TERM_STUDY","HIPO","view_proposed","-",2.6
 "2026-11-25 12:17:10","test01","TERM_STUDY","ISO 9000","view_proposed","-",4.2
 "2026-11-25 12:17:14","test01","TERM_STUDY","IoT","view_proposed","-",3.4
+"2026-11-25 12:17:26","test01","TERM_STUDY","JIS X 25010","view_proposed","-",9.8
