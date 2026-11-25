@@ -152,3 +152,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:26:49","test01","TERM_STUDY","MIMD","view_proposed","-",2.4
 "2026-11-25 12:26:53","test01","TERM_STUDY","MIPS","view_proposed","-",2.6
 "2026-11-25 12:26:57","test01","TERM_STUDY","ROM","view_proposed","-",2.6
+"2026-11-25 12:27:12","test01","TERM_STUDY","USB","view_proposed","-",13.7
