@@ -121,3 +121,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:20:05","test01","TERM_STUDY","NoSQLデータベース","view_proposed","-",6.0
 "2026-11-25 12:20:11","test01","TERM_STUDY","STS分割","view_proposed","-",4.4
 "2026-11-25 12:20:16","test01","TERM_STUDY","SysML","view_proposed","-",3.2
+"2026-11-25 12:21:08","test01","TERM_STUDY","STS分割","view_proposed","-",51.1
