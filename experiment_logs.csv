@@ -129,3 +129,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:22:21","test01","TERM_STUDY","CA","view_proposed","-",2.1
 "2026-11-25 12:22:29","test01","TERM_STUDY","CAPTCHA","view_proposed","-",6.0
 "2026-11-25 12:22:36","test01","TERM_STUDY","CBC","view_proposed","-",5.4
+"2026-11-25 12:22:42","test01","TERM_STUDY","CRYPTREC","view_proposed","-",4.9
