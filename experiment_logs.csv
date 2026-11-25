@@ -139,3 +139,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:25:24","test01","TERM_STUDY","API","view_proposed","-",120.9
 "2026-11-25 12:25:32","test01","TERM_STUDY","3Dプリンター","view_proposed","-",7.2
 "2026-11-25 12:25:36","test01","TERM_STUDY","A/Dコンバータ","view_proposed","-",2.4
+"2026-11-25 12:25:41","test01","TERM_STUDY","AND回路","view_proposed","-",2.7
