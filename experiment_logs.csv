@@ -146,3 +146,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 12:26:18","test01","TERM_STUDY","CISC","view_proposed","-",4.2
 "2026-11-25 12:26:22","test01","TERM_STUDY","DIMM","view_proposed","-",3.4
 "2026-11-25 12:26:28","test01","TERM_STUDY","DisplayPort","view_proposed","-",4.3
+"2026-11-25 12:26:35","test01","TERM_STUDY","FLOPS","view_proposed","-",4.8
