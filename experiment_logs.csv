@@ -179,3 +179,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-25 14:20:37","test01","TERM_STUDY","1000BASE-T","view_proposed","-",1.6
 "2026-11-25 14:20:41","test01","TERM_STUDY","DFD","view_proposed","-",2.1
 "2026-11-25 14:20:46","test01","TERM_STUDY","BCM","view_proposed","-",3.6
+"2026-11-25 14:21:42","test01","TERM_STUDY","DFD","view_proposed","-",54.6
