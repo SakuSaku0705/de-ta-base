@@ -77,3 +77,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-24 15:53:29","test03","TERM_STUDY","2の補数","view","-",4.2
 "2026-11-24 15:53:59","test01","LOGIN","-","start","-",0
 "2026-11-24 15:54:33","test01","TERM_STUDY","2の補数","view","-",33.0
+"2026-11-25 12:12:12","test01","LOGIN","-","start_proposed","-",0
