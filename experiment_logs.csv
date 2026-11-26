@@ -220,3 +220,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 15:17:40","test01","TERM_STUDY","1000BASE-T","view_proposed","-",3.8
 "2026-11-26 15:17:43","test01","TERM_STUDY","3-2-1ルール","view_proposed","-",2.2
 "2026-11-26 15:17:48","test01","TERM_STUDY","DFD","view_proposed","-",3.3
+"2026-11-26 15:18:40","test01","TERM_STUDY","BCM","view_proposed","-",49.9
