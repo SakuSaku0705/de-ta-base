@@ -208,3 +208,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 13:28:57","test01","TERM_STUDY","DFD","view_proposed","-",3.6
 "2026-11-26 14:46:57","test01","LOGIN","-","start_proposed","-",0
 "2026-11-26 14:47:02","test01","TERM_STUDY","BLE","view_proposed","-",3.4
+"2026-11-26 14:47:06","test01","TERM_STUDY","ACID特性","view_proposed","-",2.0
