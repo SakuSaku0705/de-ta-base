@@ -230,3 +230,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 15:20:00","test01","LOGIN","-","start_baseline","-",0
 "2026-11-26 15:21:37","test01","TERM_STUDY","BLE","view_baseline","-",95.1
 "2026-11-26 15:21:38","test01","LOGOUT","-","end_baseline","-",0
+"2026-11-26 15:24:24","test01","LOGIN","-","start_proposed","-",0
