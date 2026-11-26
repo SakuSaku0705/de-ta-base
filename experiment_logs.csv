@@ -218,3 +218,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 15:17:32","test01","TERM_STUDY","API","view_proposed","-",8.1
 "2026-11-26 15:17:34","test01","TERM_STUDY","ACID特性","view_proposed","-",1.1
 "2026-11-26 15:17:40","test01","TERM_STUDY","1000BASE-T","view_proposed","-",3.8
+"2026-11-26 15:17:43","test01","TERM_STUDY","3-2-1ルール","view_proposed","-",2.2
