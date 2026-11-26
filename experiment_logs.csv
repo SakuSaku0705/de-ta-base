@@ -222,3 +222,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 15:17:48","test01","TERM_STUDY","DFD","view_proposed","-",3.3
 "2026-11-26 15:18:40","test01","TERM_STUDY","BCM","view_proposed","-",49.9
 "2026-11-26 15:18:42","test01","LOGOUT","-","end_proposed","-",0
+"2026-11-26 15:18:52","test01","LOGIN","-","start_baseline","-",0
