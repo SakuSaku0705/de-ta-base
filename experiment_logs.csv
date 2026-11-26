@@ -212,3 +212,4 @@ timestamp,user_id,action_type,term_name,detail,is_correct,duration_seconds
 "2026-11-26 14:47:09","test01","TERM_STUDY","3-2-1ルール","view_proposed","-",1.4
 "2026-11-26 15:16:26","test01","LOGIN","-","start_proposed","-",0
 "2026-11-26 15:16:31","test01","TERM_STUDY","BLE","view_proposed","-",3.3
+"2026-11-26 15:16:33","test01","LOGOUT","-","end_proposed","-",0
